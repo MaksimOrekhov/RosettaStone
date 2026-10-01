@@ -14,13 +14,17 @@
 
 namespace RosettaStone::PlayMode
 {
-Choice::Choice(Player* _player) : player(_player)
+Choice::Choice(Player* _player)
+    : player(_player), darkGiftOptionsByEntityID()
 {
-    // Do nothing
+    // Do nothing. Container members use their default constructors.
 }
 
+Choice::~Choice() = default;
+
 Choice::Choice(Player* _player, std::vector<Card*> _cardSets)
-    : player(_player), cardSets(std::move(_cardSets))
+    : player(_player), cardSets(std::move(_cardSets)),
+      darkGiftOptionsByEntityID()
 {
     // Do nothing
 }
@@ -89,6 +93,13 @@ void Choice::TryPrepare()
     {
         const Playable* effect = player->game->entityList[lastChoice];
 
+        EraseIf(cardSets, [effect](const Card* card) {
+            return effect->card->id == card->id;
+        });
+    }
+    else if (choiceAction == ChoiceAction::KAZAKUS && depth == 2)
+    {
+        const Playable* effect = player->game->entityList[lastChoice];
         EraseIf(cardSets, [effect](const Card* card) {
             return effect->card->id == card->id;
         });

@@ -4,11 +4,31 @@
 // Copyright (c) 2017-2024 Chris Ohk
 
 #include <Rosetta/PlayMode/Actions/PlayCard.hpp>
+#include <Rosetta/PlayMode/Actions/Generic.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
+#include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Tasks/PlayerTasks/HeroPowerTask.hpp>
+#include <Rosetta/PlayMode/Zones/FieldZone.hpp>
+
+#include <algorithm>
 
 namespace RosettaStone::PlayMode::PlayerTasks
 {
+namespace
+{
+bool HasActiveDeios(const Player* player)
+{
+    // Deios doubles only the hero power controlled by the player with an
+    // unsilenced copy on their board.
+    const auto minions = player->GetFieldZone()->GetMinions();
+    return std::any_of(minions.begin(), minions.end(), [](const Minion* minion) {
+        return minion && minion->card &&
+               minion->GetGameTag(GameTag::SILENCED) == 0 &&
+               minion->card->id == "TIME_064";
+    });
+}
+}  // namespace
+
 HeroPowerTask::HeroPowerTask(Playable* target) : ITask(nullptr, target)
 {
     // Do nothing
@@ -51,6 +71,7 @@ TaskStatus HeroPowerTask::Impl(Player* player)
             std::min(player->GetTemporaryMana(), power.GetCost());
         player->SetTemporaryMana(player->GetTemporaryMana() - tempUsed);
         player->SetUsedMana(player->GetUsedMana() + power.GetCost() - tempUsed);
+        Generic::TrackManaSpentWhileHeld(player, power.GetCost());
     }
 
     // Process target trigger
@@ -69,6 +90,11 @@ TaskStatus HeroPowerTask::Impl(Player* player)
     // Process power tasks
     player->game->taskQueue.StartEvent();
     power.ActivateTask(PowerType::POWER, dynamic_cast<Character*>(m_target));
+    if (HasActiveDeios(player))
+    {
+        power.ActivateTask(PowerType::POWER,
+                           dynamic_cast<Character*>(m_target));
+    }
     player->game->ProcessTasks();
     player->game->taskQueue.EndEvent();
 

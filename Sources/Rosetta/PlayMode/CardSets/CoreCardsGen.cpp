@@ -3,8 +3,50 @@
 // RosettaStone is hearthstone simulator using C++ with reinforcement learning.
 // Copyright (c) 2017-2024 Chris Ohk
 
+#include <Rosetta/PlayMode/Actions/Choose.hpp>
+#include <Rosetta/PlayMode/Actions/Attack.hpp>
+#include <Rosetta/PlayMode/Actions/Generic.hpp>
+#include <Rosetta/PlayMode/Actions/Kazakus.hpp>
+#include <Rosetta/PlayMode/Actions/Summon.hpp>
+#include <Rosetta/PlayMode/Auras/AdaptiveCostEffect.hpp>
 #include <Rosetta/PlayMode/CardSets/CoreCardsGen.hpp>
 #include <Rosetta/PlayMode/Cards/CardPowers.hpp>
+#include <Rosetta/PlayMode/Enchants/Effects.hpp>
+#include <Rosetta/PlayMode/Enchants/Enchant.hpp>
+#include <Rosetta/PlayMode/Models/Choice.hpp>
+#include <Rosetta/PlayMode/Models/Character.hpp>
+#include <Rosetta/PlayMode/Models/Enchantment.hpp>
+#include <Rosetta/PlayMode/Games/Game.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/AddEnchantmentTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/ArmorTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/CastRandomSpellTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/ControlTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/CopyTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DiscoverTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DrawTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroyTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/FreezeTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/FuncNumberTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/FuncPlayableTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/IncludeTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/PutCardDeckTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/ManaCrystalTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/RandomCardTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/RandomMinionTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/RefreshManaTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/SummonTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/TempManaTask.hpp>
+#include <Rosetta/PlayMode/Cards/Cards.hpp>
+#include <Rosetta/PlayMode/Zones/HandZone.hpp>
+#include <Rosetta/PlayMode/Zones/DeckZone.hpp>
+#include <Rosetta/PlayMode/Zones/FieldZone.hpp>
+#include <Rosetta/PlayMode/Zones/GraveyardZone.hpp>
+
+#include <algorithm>
+#include <effolkronium/random.hpp>
+
+using Random = effolkronium::random_static;
 
 namespace RosettaStone::PlayMode
 {
@@ -2669,11 +2711,160 @@ void CoreCardsGen::AddWarlock(std::map<std::string, CardDef>& cards)
             }
         }));
     cards.emplace("CS3_003", cardDef);
+
+    // [JAIL_509] Godfrey the Betrayer
+    // Overdrawn cards return to hand when there is room, at one less cost.
+    cardDef.ClearData();
+    cardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::GAME_START));
+    cardDef.power.GetTrigger()->triggerActivation = TriggerActivation::DECK;
+    cardDef.power.GetTrigger()->removeAfterTriggered = true;
+    cardDef.power.GetTrigger()->fastExecution = true;
+    cardDef.power.GetTrigger()->tasks = { std::make_shared<CustomTask>(
+        [](Player* player, [[maybe_unused]] Entity* source,
+           [[maybe_unused]] Playable* target) {
+            player->SetGodfreyActive(true);
+        }) };
+    cards.emplace("JAIL_509", cardDef);
+
+    // [JAIL_510] Annihilation - COST:8
+    // Destroy all minions. Summon any Demons in the bottom 3 cards of your deck.
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(
+        std::make_shared<DestroyTask>(EntityType::ALL_MINIONS, true));
+    cardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source,
+           [[maybe_unused]] Playable* target) {
+            DeckZone* deck = player->GetDeckZone();
+            const int count = std::min(3, deck->GetCount());
+            std::vector<Playable*> bottomCards;
+            bottomCards.reserve(count);
+            for (int rank = 1; rank <= count; ++rank)
+            {
+                bottomCards.emplace_back(deck->GetNthBottomCard(rank));
+            }
+
+            for (Playable* playable : bottomCards)
+            {
+                if (!playable || playable->card->GetCardType() != CardType::MINION ||
+                    playable->card->GetRace() != Race::DEMON)
+                {
+                    continue;
+                }
+
+                if (player->GetFieldZone()->IsFull())
+                {
+                    break;
+                }
+
+                deck->Remove(playable);
+                Generic::Summon(dynamic_cast<Minion*>(playable), -1, source);
+            }
+        }));
+    cards.emplace("JAIL_510", cardDef);
+
+    // [DINO_402] Bat Mask - COST:8
+    // Set a friendly minion's stats to 1/1. Fill your board with copies of it.
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, Playable* target) {
+            auto* minion = dynamic_cast<Minion*>(target);
+            if (!minion || minion->player != player ||
+                minion->GetZoneType() != ZoneType::PLAY)
+            {
+                return;
+            }
+
+            minion->SetAttack(1);
+            minion->SetBaseHealth(1);
+
+            auto* field = player->GetFieldZone();
+            while (!field->IsFull())
+            {
+                auto* copy = dynamic_cast<Minion*>(Entity::GetFromCard(
+                    player, minion->card, minion->GetGameTags(), field));
+                if (!copy)
+                {
+                    break;
+                }
+
+                minion->CopyInternalAttributes(copy);
+                Generic::Summon(copy, -1, source);
+            }
+        }));
+    cardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 },
+        { PlayReq::REQ_FRIENDLY_TARGET, 0 }
+    };
+    cards.emplace("DINO_402", cardDef);
+
+    // -------------------------------------- LOCATION - WARLOCK
+    // [JAIL_511] Spire of Solitude - COST:5 [DURABILITY:2]
+    // - Set: ESCAPEFROM_VIOLET_HOLD, Rarity: Epic
+    // --------------------------------------------------------
+    // Text: Summon a Demon with stats equal to your hand size.
+    //       It attacks a random enemy minion.
+    // --------------------------------------------------------
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(std::make_shared<SummonTask>(
+        "JAIL_511t", SummonSide::DEFAULT, true));
+    cardDef.power.AddPowerTask(std::make_shared<FuncPlayableTask>(
+        [](const std::vector<Playable*>& playables) {
+            if (playables.empty())
+            {
+                return std::vector<Playable*>{};
+            }
+
+            auto* demon = dynamic_cast<Minion*>(playables.back());
+            if (!demon)
+            {
+                return std::vector<Playable*>{};
+            }
+
+            const int handSize = demon->player->GetHandZone()->GetCount();
+            demon->SetAttack(handSize);
+            demon->SetBaseHealth(handSize);
+
+            auto enemyMinions = demon->player->opponent->GetFieldZone()->GetMinions();
+            std::erase_if(enemyMinions, [](const Minion* minion) {
+                return minion->IsUntouchable();
+            });
+            if (!enemyMinions.empty())
+            {
+                const auto targetIndex = Random::get<std::size_t>(
+                    0, enemyMinions.size() - 1);
+                Generic::Attack(demon->player, demon,
+                                enemyMinions[targetIndex], true);
+            }
+
+            return std::vector<Playable*>{};
+        }));
+    cards.emplace("JAIL_511", cardDef);
+
+    // [JAIL_399] Imp Gang Stooge
+    // Put two Grandmother Imps at the bottom of your deck when it dies.
+    cardDef.ClearData();
+    cardDef.power.AddDeathrattleTask(std::make_shared<PutCardDeckTask>(
+        "JAIL_399t1", DeckPosition::BOTTOM, 2));
+    cards.emplace("JAIL_399", cardDef);
 }
 
 void CoreCardsGen::AddWarlockNonCollect(std::map<std::string, CardDef>& cards)
 {
     CardDef cardDef;
+
+    // [JAIL_511t] Shivarra Infiltrator - COST:1 [ATK:1/HP:1]
+    // - Race: Demon
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(nullptr);
+    cards.emplace("JAIL_511t", cardDef);
+
+    // [JAIL_399t1] Grandmother Imp - COST:8 [ATK:8/HP:8]
+    // - Race: Demon
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(nullptr);
+    cards.emplace("JAIL_399t1", cardDef);
 
     // --------------------------------------- MINION - WARLOCK
     // [CORE_GIL_191t] Imp - COST:1 [ATK:1/HP:1]
@@ -2995,6 +3186,40 @@ void CoreCardsGen::AddWarrior(std::map<std::string, CardDef>& cards)
     cardDef.power.AddPowerTask(
         std::make_shared<AddEnchantmentTask>("CS3_008e", EntityType::PLAYER));
     cards.emplace("CS3_008", cardDef);
+
+    // ----------------------------------------- SPELL - WARRIOR
+    // [CATA_582] Searing Fissure - COST:2
+    // Deal 1 damage to all minions. Give your hero +3 Attack this turn.
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::ALL_MINIONS, 1, true));
+    cardDef.power.AddPowerTask(
+        std::make_shared<AddEnchantmentTask>("CS2_045e", EntityType::HERO));
+    cardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            const auto* spell = dynamic_cast<const Spell*>(source);
+            if (player != nullptr && spell != nullptr && spell->card != nullptr &&
+                spell->card->id == "CATA_582")
+            {
+                player->SetNumFireSpellsCastThisTurn(
+                    player->GetNumFireSpellsCastThisTurn() + 1);
+            }
+        }));
+    cards.emplace("CATA_582", cardDef);
+
+    // ------------------------------------- LOCATION - WARRIOR
+    // [CORE_REV_990] Sanguine Depths - COST:1
+    // Deal 1 damage to a minion and give it +2 Attack.
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::TARGET, 1));
+    cardDef.power.AddPowerTask(
+        std::make_shared<AddEnchantmentTask>("REV_990e", EntityType::TARGET));
+    cardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 }
+    };
+    cards.emplace("CORE_REV_990", cardDef);
 }
 
 void CoreCardsGen::AddWarriorNonCollect(std::map<std::string, CardDef>& cards)
@@ -3384,6 +3609,45 @@ void CoreCardsGen::AddDemonHunterNonCollect(
 void CoreCardsGen::AddNeutral(std::map<std::string, CardDef>& cards)
 {
     CardDef cardDef;
+
+    // --------------------------------------- MINION - NEUTRAL
+    // [CORE_UNG_205] Glacial Shard - COST:1 [ATK:2/HP:1]
+    // - Set: CORE, Rarity: Common
+    // --------------------------------------------------------
+    // Text: <b>Battlecry:</b> Freeze an enemy.
+    // --------------------------------------------------------
+    // PlayReq:
+    // - REQ_TARGET_TO_PLAY = 0
+    // - REQ_ENEMY_TARGET = 0
+    // --------------------------------------------------------
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(
+        std::make_shared<FreezeTask>(EntityType::TARGET));
+    cardDef.property.playReqs = PlayReqs{ { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+                                          { PlayReq::REQ_ENEMY_TARGET, 0 } };
+    cards.emplace("CORE_UNG_205", cardDef);
+
+    // --------------------------------------- MINION - WARLOCK
+    // [JAIL_513] Caged Cranium - COST:3 [ATK:3/HP:1]
+    // - Race: Undead, Set: ESCAPEFROM_VIOLET_HOLD, Rarity: Rare
+    // --------------------------------------------------------
+    // Text: <b>Taunt</b>
+    //       <b>Battlecry:</b> Gain +1 Health for each card in your hand.
+    // --------------------------------------------------------
+    cardDef.ClearData();
+    cardDef.power.AddPowerTask(
+        std::make_shared<IncludeTask>(EntityType::SOURCE));
+    cardDef.power.AddPowerTask(std::make_shared<FuncPlayableTask>(
+        [](const std::vector<Playable*>& playables) {
+            if (const auto minion = dynamic_cast<Minion*>(playables[0]))
+            {
+                const int handSize = minion->player->GetHandZone()->GetCount();
+                minion->SetBaseHealth(minion->GetBaseHealth() + handSize);
+            }
+
+            return std::vector<Playable*>{};
+        }));
+    cards.emplace("JAIL_513", cardDef);
 
     // --------------------------------------- MINION - NEUTRAL
     // [CORE_CFM_120] Mistress of Mixtures - COST:1 [ATK:2/HP:2]
@@ -4867,5 +5131,1466 @@ void CoreCardsGen::AddAll(std::map<std::string, CardDef>& cards)
 
     AddNeutral(cards);
     AddNeutralNonCollect(cards);
+
+    // ManaMind's current Standard additions. These definitions intentionally
+    // live beside the existing card rules until RosettaStone has a dedicated
+    // generator for the 2025/2026 card sets.
+    CardDef currentCardDef;
+
+    // Godfather Kazakus creates two unique effects and then chooses when to
+    // resolve them. The option cards are simulator-only choice entities.
+    const auto kazakusEffects = [] {
+        std::vector<Card*> result;
+        for (int effect = 1; effect <= 9; ++effect)
+        {
+            result.emplace_back(Cards::FindCardByID("MANA_KAZAKUS_EFFECT_" +
+                                                    std::to_string(effect)));
+        }
+        return result;
+    }();
+    const std::vector<Card*> kazakusLengths{
+        Cards::FindCardByID("MANA_KAZAKUS_LENGTH_7"),
+        Cards::FindCardByID("MANA_KAZAKUS_LENGTH_4"),
+        Cards::FindCardByID("MANA_KAZAKUS_LENGTH_0")
+    };
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_START));
+    currentCardDef.power.GetTrigger()->tasks = { std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* timer = dynamic_cast<Enchantment*>(source);
+            if (timer == nullptr)
+            {
+                return;
+            }
+            const int turnsLeft = timer->GetScriptTag2();
+            if (turnsLeft > 1)
+            {
+                timer->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2,
+                                  turnsLeft - 1);
+                return;
+            }
+            const int packedEffects = timer->GetScriptTag1();
+            Generic::ResolveKazakusEffect(player, timer, packedEffects / 10);
+            Generic::ResolveKazakusEffect(player, timer, packedEffects % 10);
+            timer->Remove();
+        }) };
+    cards.emplace("MANA_KAZAKUS_TIMER", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            const int firstEffect =
+                source->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1);
+            const int secondEffect =
+                source->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2);
+            Generic::ResolveKazakusEffect(player, source, firstEffect);
+            Generic::ResolveKazakusEffect(player, source, secondEffect);
+        }));
+    cards.emplace("MANA_KAZAKUS_TRIAL", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [kazakusEffects, kazakusLengths](Player* player, Entity* source,
+                                         [[maybe_unused]] Playable* target) {
+            if (std::ranges::any_of(
+                    kazakusEffects,
+                    [](const Card* card) { return card == nullptr; }) ||
+                std::ranges::any_of(kazakusLengths, [](const Card* card) {
+                    return card == nullptr;
+                }))
+            {
+                throw std::runtime_error(
+                    "Godfather Kazakus option metadata is missing");
+            }
+
+            auto first = std::make_unique<Choice>(player, kazakusEffects);
+            first->choiceType = ChoiceType::GENERAL;
+            first->choiceAction = ChoiceAction::KAZAKUS;
+            first->source = source;
+            first->depth = 1;
+
+            auto second = std::make_unique<Choice>(player, kazakusEffects);
+            second->choiceType = ChoiceType::GENERAL;
+            second->choiceAction = ChoiceAction::KAZAKUS;
+            second->source = source;
+            second->depth = 2;
+
+            auto length = std::make_unique<Choice>(player, kazakusLengths);
+            length->choiceType = ChoiceType::GENERAL;
+            length->choiceAction = ChoiceAction::KAZAKUS;
+            length->source = source;
+            length->depth = 3;
+
+            second->nextChoice = std::move(length);
+            first->nextChoice = std::move(second);
+            first->TryPrepare();
+            player->choice = std::move(first);
+        }));
+    cards.emplace("CAP_405", currentCardDef);
+
+    // [TLC_451] Cursed Catacombs (temporary draw choice).
+    // Discover another card from your deck. Make it Temporary.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DiscoverTask>(DiscoverType::DECK, 3, 1, true,
+                                       ChoiceAction::DRAW_TEMPORARY_FROM_DECK));
+    cards.emplace("TLC_451", currentCardDef);
+
+    // [CATA_496] Cursed Chains
+    // Steal an enemy minion through the end of its owner's next turn. It
+    // cannot attack during the turn Cursed Chains is played.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<AddEnchantmentTask>(
+        "CATA_496e_attack", EntityType::TARGET));
+    currentCardDef.power.AddPowerTask(std::make_shared<AddEnchantmentTask>(
+        "CATA_496e_control", EntityType::TARGET));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<ControlTask>(EntityType::TARGET));
+    currentCardDef.property.playReqs =
+        PlayReqs{ { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+                  { PlayReq::REQ_ENEMY_TARGET, 0 },
+                  { PlayReq::REQ_MINION_TARGET, 0 } };
+    cards.emplace("CATA_496", currentCardDef);
+
+    // [CATA_496e_attack] Cursed Chains attack restriction through our turn.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(
+        std::vector<std::shared_ptr<IEffect>>{ std::make_shared<Effect>(
+            GameTag::CANT_ATTACK, EffectOperator::SET, 1) }));
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_END));
+    currentCardDef.power.GetTrigger()->removeAfterTriggered = true;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<RemoveEnchantmentTask>()
+    };
+    cards.emplace("CATA_496e_attack", currentCardDef);
+
+    // [CATA_496e_control] Restore control after the opponent's turn ends.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(
+        std::vector<std::shared_ptr<IEffect>>{ std::make_shared<Effect>(
+            GameTag::CONTROLLER_CHANGED_THIS_TURN, EffectOperator::SET, 1) }));
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_END));
+    currentCardDef.power.GetTrigger()->eitherTurn = true;
+    currentCardDef.power.GetTrigger()->triggerSource = TriggerSource::ENEMY;
+    currentCardDef.power.GetTrigger()->removeAfterTriggered = true;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<RemoveEnchantmentTask>(),
+        std::make_shared<ControlTask>(EntityType::TARGET, true)
+    };
+    cards.emplace("CATA_496e_control", currentCardDef);
+
+    // [CATA_725] Shadowsworn Disciple
+    // Herald a Soldier of Cho'gall, upgrading all Soldiers every second
+    // Herald. The Soldier token is defined below.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, [[maybe_unused]] Entity* source,
+           [[maybe_unused]] Playable* target) {
+            const int heraldCount = std::min(
+                4, player->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2) + 1);
+            player->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2, heraldCount);
+        }));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<SummonTask>("CATA_725t", SummonSide::RIGHT));
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, [[maybe_unused]] Entity* source,
+           [[maybe_unused]] Playable* target) {
+            const int upgrade = std::min(
+                2, player->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2) / 2);
+            for (Minion* minion : player->GetFieldZone()->GetMinions())
+            {
+                if (minion->card->id == "CATA_725t")
+                {
+                    minion->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1, upgrade);
+                }
+            }
+        }));
+    currentCardDef.power.AddDeathrattleTask(
+        std::make_shared<HealTask>(EntityType::HERO, 3));
+    cards.emplace("CATA_725", currentCardDef);
+
+    // [CATA_725t] Soldier of Cho'gall
+    // Destroy the minion to the right (if present), then gain +2/+2. Each
+    // pair of Heralds doubles the amount, up to +8/+8.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_END));
+    currentCardDef.power.GetTrigger()->tasks = { std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* soldier = dynamic_cast<Minion*>(source);
+            if (soldier == nullptr)
+            {
+                return;
+            }
+
+            const int nextPosition = soldier->GetZonePosition() + 1;
+            for (Minion* minion : player->GetFieldZone()->GetMinions())
+            {
+                if (minion->GetZonePosition() == nextPosition)
+                {
+                    minion->SetDamage(minion->GetDamage() +
+                                      minion->GetHealth());
+                    player->game->ProcessDestroyAndUpdateAura();
+                    break;
+                }
+            }
+
+            if (soldier->GetHealth() <= 0)
+            {
+                return;
+            }
+
+            const int upgrade = std::min(
+                2, soldier->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1));
+            const int gain = 2 << upgrade;
+            soldier->SetAttack(soldier->GetAttack() + gain);
+            soldier->SetBaseHealth(soldier->GetBaseHealth() + gain);
+        }) };
+    cards.emplace("CATA_725t", currentCardDef);
+
+    // [JAIL_515] Shadow Rounds
+    // Deal 2 damage to an enemy minion. If it dies, repeat on a random
+    // enemy minion. Resolve deaths between hits so Deathrattles and Reborn
+    // affect which minions can be selected next.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, Playable* target) {
+            auto* spell = dynamic_cast<Playable*>(source);
+            auto* minion = dynamic_cast<Minion*>(target);
+            if (spell == nullptr || minion == nullptr)
+            {
+                return;
+            }
+
+            while (minion != nullptr)
+            {
+                Generic::TakeDamageToCharacter(spell, minion, 2, true);
+                if (minion->GetHealth() > 0)
+                {
+                    break;
+                }
+
+                player->game->ProcessDestroyAndUpdateAura();
+                std::vector<Minion*> candidates;
+                for (Minion* enemyMinion :
+                     player->opponent->GetFieldZone()->GetMinions())
+                {
+                    if (enemyMinion->GetHealth() > 0)
+                    {
+                        candidates.emplace_back(enemyMinion);
+                    }
+                }
+                if (candidates.empty())
+                {
+                    break;
+                }
+
+                minion = candidates[Random::get<std::size_t>(
+                    0, candidates.size() - 1)];
+            }
+        }));
+    currentCardDef.property.playReqs =
+        PlayReqs{ { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+                  { PlayReq::REQ_ENEMY_TARGET, 0 },
+                  { PlayReq::REQ_MINION_TARGET, 0 } };
+    cards.emplace("JAIL_515", currentCardDef);
+
+    // [CATA_999] Earthen Drake
+    // At the end of your turn, deal 4 damage to the enemy hero.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_END));
+    currentCardDef.power.GetTrigger()->tasks = { std::make_shared<DamageTask>(
+        EntityType::ENEMY_HERO, 4) };
+    cards.emplace("CATA_999", currentCardDef);
+
+    // [TIME_064] Chrono-Lord Deios
+    // Your Battlecries, Deathrattles, Hero Power, and end of turn effects
+    // trigger twice. The first two use existing player aura flags; Hero Power
+    // is checked when its task resolves, and turn-end effects are handled in
+    // Trigger.cpp.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(std::make_shared<Aura>(
+        AuraType::PLAYER,
+        EffectList{
+            std::make_shared<Effect>(GameTag::EXTRA_BATTLECRIES_BASE,
+                                     EffectOperator::SET, 1),
+            std::make_shared<Effect>(GameTag::EXTRA_MINION_DEATHRATTLES_BASE,
+                                     EffectOperator::SET, 1)
+        }));
+    cards.emplace("TIME_064", currentCardDef);
+
+    // [BE_036] M.O.T.H.E.R.
+    // Choose a card in hand; reduce its Cost by 5 and its neighbors by 4, 3,
+    // 2, and 1 moving outward in either direction.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<FuncNumberTask>([](Playable* playable) {
+            const auto hand = playable->player->GetHandZone()->GetAll();
+            if (hand.empty())
+            {
+                return 0;
+            }
+
+            std::vector<int> choices;
+            choices.reserve(hand.size());
+            for (Playable* card : hand)
+            {
+                choices.emplace_back(card->GetGameTag(GameTag::ENTITY_ID));
+            }
+
+            Generic::CreateChoice(playable->player, playable,
+                                  ChoiceType::GENERAL, ChoiceAction::MOTHER,
+                                  choices);
+            return 0;
+        }));
+    cards.emplace("BE_036", currentCardDef);
+
+    // [JAIL_514] The Unseen Atlas
+    // Costs (1) less for each card in your hand. Draw 3 cards.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(
+        std::make_shared<AdaptiveCostEffect>([](const Playable* playable) {
+            return playable->player->GetHandZone()->GetCount();
+        }));
+    currentCardDef.power.AddPowerTask(std::make_shared<DrawTask>(3));
+    cards.emplace("JAIL_514", currentCardDef);
+
+    // [TIME_031] RAFAAM LADDER!!
+    // Draw 3 cards with different Costs.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, [[maybe_unused]] Entity* source,
+           [[maybe_unused]] Playable* target) {
+            std::vector<int> drawnCosts;
+            for (int i = 0; i < 3; ++i)
+            {
+                std::vector<Playable*> candidates;
+                for (Playable* card : player->GetDeckZone()->GetAll())
+                {
+                    if (std::find(drawnCosts.begin(), drawnCosts.end(),
+                                  card->GetCost()) == drawnCosts.end())
+                    {
+                        candidates.emplace_back(card);
+                    }
+                }
+
+                if (candidates.empty())
+                {
+                    break;
+                }
+
+                Random::shuffle(candidates);
+                Playable* card = candidates.front();
+                drawnCosts.emplace_back(card->GetCost());
+                Generic::Draw(player, card);
+            }
+        }));
+    cards.emplace("TIME_031", currentCardDef);
+
+    // ----------------------------------------- SPELL - PRIEST
+    // [CATA_302] Mend - COST:1
+    // Restore a minion to full Health. Draw a card.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        []([[maybe_unused]] Player* player, Entity* source, Playable* target) {
+            auto* character = dynamic_cast<Character*>(target);
+            auto* playableSource = dynamic_cast<Playable*>(source);
+            if (character && playableSource)
+            {
+                character->TakeHeal(playableSource, character->GetDamage());
+            }
+        }));
+    currentCardDef.power.AddPowerTask(std::make_shared<DrawTask>(1));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 }
+    };
+    cards.emplace("CATA_302", currentCardDef);
+
+    // ----------------------------------------- SPELL - PRIEST
+    // [CORE_BAR_311] Devouring Plague - COST:3
+    // Lifesteal. Deal 4 damage randomly split among all enemy minions.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* spell = dynamic_cast<Playable*>(source);
+            if (spell == nullptr || player == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+
+            Player* opponent = player->game->GetOpponentPlayer();
+            for (int hit = 0; hit < 4 && opponent != nullptr; ++hit)
+            {
+                const auto& minions = opponent->GetFieldZone()->GetMinions();
+                if (minions.empty())
+                {
+                    break;
+                }
+
+                Minion* targetMinion = *Random::get(minions);
+                // This card is explicitly Immune to Spell Damage.
+                Generic::TakeDamageToCharacter(spell, targetMinion, 1, false);
+                player->game->ProcessDestroyAndUpdateAura();
+            }
+        }));
+    cards.emplace("CORE_BAR_311", currentCardDef);
+
+    // ----------------------------------------- SPELL - PRIEST
+    // [CATA_308] Medivh's Triumph - COST:5
+    // Deal 4 damage to all minions. Costs (1) if you control a Legendary card.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(
+        std::make_shared<AdaptiveCostEffect>([](const Playable* playable) {
+            if (playable == nullptr || playable->player == nullptr)
+            {
+                return 0;
+            }
+
+            const Player* owner = playable->player;
+            const auto hasLegendary = [](const Card* card) {
+                return card != nullptr && card->GetRarity() == Rarity::LEGENDARY;
+            };
+
+            if (owner->GetHero()->HasWeapon() &&
+                hasLegendary(owner->GetWeapon().card))
+            {
+                return playable->GetGameTag(GameTag::COST) - 1;
+            }
+            for (const Minion* minion : owner->GetFieldZone()->GetMinions())
+            {
+                if (hasLegendary(minion->card))
+                {
+                    return playable->GetGameTag(GameTag::COST) - 1;
+                }
+            }
+            for (const Location* location : owner->GetFieldZone()->GetLocations())
+            {
+                if (hasLegendary(location->card))
+                {
+                    return playable->GetGameTag(GameTag::COST) - 1;
+                }
+            }
+            return 0;
+        }));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::ALL_MINIONS, 4, true));
+    cards.emplace("CATA_308", currentCardDef);
+
+    // ----------------------------------------- SPELL - DRUID
+    // [TIME_702] Ebb and Flow - COST:2
+    // Deal 3 damage. If you played a minion while holding this, gain 5 Armor.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::TARGET, 3, true));
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* spell = dynamic_cast<Playable*>(source);
+            if (player == nullptr || spell == nullptr ||
+                spell->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1) != 1)
+            {
+                return;
+            }
+            Hero* hero = player->GetHero();
+            if (hero != nullptr)
+            {
+                hero->SetArmor(hero->GetGameTag(GameTag::ARMOR) + 5);
+            }
+        }));
+    currentCardDef.power.AddTrigger(std::make_shared<Trigger>(TriggerType::PLAY_CARD));
+    currentCardDef.power.GetTrigger()->triggerActivation = TriggerActivation::HAND;
+    currentCardDef.power.GetTrigger()->triggerSource = TriggerSource::FRIENDLY;
+    currentCardDef.power.GetTrigger()->conditions = {
+        std::make_shared<SelfCondition>([](Playable* playedCard) {
+            return playedCard != nullptr && playedCard->card != nullptr &&
+                   playedCard->card->GetCardType() == CardType::MINION;
+        })
+    };
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<SetGameTagTask>(EntityType::SOURCE,
+                                         GameTag::TAG_SCRIPT_DATA_NUM_1, 1)
+    };
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 }
+    };
+    cards.emplace("TIME_702", currentCardDef);
+
+    // --------------------------------- ENCHANTMENT - DRUID
+    // [MM_END_011_TIMER] Acceleration Aura timer.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_START));
+    currentCardDef.power.GetTrigger()->tasks = { std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* timer = dynamic_cast<Enchantment*>(source);
+            if (player == nullptr || timer == nullptr)
+            {
+                return;
+            }
+
+            TempManaTask gainMana(1);
+            gainMana.SetPlayer(player);
+            gainMana.SetSource(source);
+            gainMana.Run();
+
+            const int turnsLeft = timer->GetScriptTag2();
+            if (turnsLeft > 1)
+            {
+                timer->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2,
+                                  turnsLeft - 1);
+            }
+            else
+            {
+                timer->Remove();
+            }
+        }) };
+    cards.emplace("MM_END_011_TIMER", currentCardDef);
+
+    // ----------------------------------------- SPELL - DRUID
+    // [END_011] Acceleration Aura - COST:2
+    // At the start of your turn, gain a temporary Mana Crystal. Lasts 3 turns.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->GetHero() == nullptr)
+            {
+                return;
+            }
+            Card* timerCard = Cards::FindCardByID("MM_END_011_TIMER");
+            if (timerCard == nullptr)
+            {
+                throw std::runtime_error("Acceleration Aura timer metadata is missing");
+            }
+            Generic::AddEnchantment(timerCard, dynamic_cast<Playable*>(source),
+                                    player->GetHero(), 1, 3);
+        }));
+    cards.emplace("END_011", currentCardDef);
+
+    // ---------------------------------------- MINION - DRUID
+    // [CATA_131] Felwood Treant - COST:2 [ATK:2/HP:2]
+    // Battlecry: Gain a temporary Mana Crystal. If you spent 4 Mana while
+    // holding this, it is permanent.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (source == nullptr)
+            {
+                return;
+            }
+            const bool permanent =
+                source->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1) >= 4;
+            if (permanent)
+            {
+                ManaCrystalTask gainCrystal(1, false);
+                gainCrystal.SetPlayer(player);
+                gainCrystal.SetSource(source);
+                gainCrystal.Run();
+            }
+            else
+            {
+                TempManaTask gainTemporary(1);
+                gainTemporary.SetPlayer(player);
+                gainTemporary.SetSource(source);
+                gainTemporary.Run();
+            }
+        }));
+    cards.emplace("CATA_131", currentCardDef);
+
+    // ---------------------------------------- MINION - DRUID
+    // [CATA_140] Merithra of the Dream - COST:8 [ATK:4/HP:12]
+    // Battlecry: Fill your hand with random Dragons. If you spent 25 Mana
+    // while holding this, they cost (1).
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+            const bool reduceCost =
+                source->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1) >= 25;
+            while (!player->GetHandZone()->IsFull())
+            {
+                RandomCardTask randomDragon(CardType::MINION,
+                                            CardClass::INVALID, Race::DRAGON);
+                randomDragon.SetPlayer(player);
+                randomDragon.SetSource(source);
+                randomDragon.Run();
+                if (player->game->taskStack.playables.empty())
+                {
+                    break;
+                }
+                Playable* generated = player->game->taskStack.playables.back();
+                if (generated == nullptr)
+                {
+                    break;
+                }
+                if (reduceCost)
+                {
+                    generated->SetCost(1);
+                }
+                Generic::AddCardToHand(player, generated);
+            }
+        }));
+    cards.emplace("CATA_140", currentCardDef);
+
+    // --------------------------------- ENCHANTMENT - DEMONHUNTER
+    // [BTA_02pe] Combination Attack - COST:0
+    // Your hero has +1 Attack this turn.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(Enchants::GetEnchantFromText("BTA_02pe"));
+    cards.emplace("BTA_02pe", currentCardDef);
+
+    // ----------------------------------------- SPELL - WARRIOR
+    // [CATA_585] Torch - COST:1
+    // Deal 8 damage to a damaged minion. Return this to hand with any excess
+    // damage.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, Playable* target) {
+            auto* spell = dynamic_cast<Playable*>(source);
+            auto* minion = dynamic_cast<Minion*>(target);
+            if (player == nullptr || spell == nullptr || minion == nullptr)
+            {
+                return;
+            }
+
+            const int healthBeforeDamage = minion->GetHealth();
+            Generic::TakeDamageToCharacter(spell, minion, 8, true);
+            if (healthBeforeDamage < 8 && minion->GetHealth() <= 0)
+            {
+                CopyTask returnSpell(EntityType::SOURCE, ZoneType::HAND, 1);
+                returnSpell.SetPlayer(player);
+                returnSpell.SetSource(source);
+                returnSpell.SetTarget(target);
+                returnSpell.Run();
+            }
+        }));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 },
+        { PlayReq::REQ_DAMAGED_TARGET, 0 }
+    };
+    cards.emplace("CATA_585", currentCardDef);
+
+    // ---------------------------------------- MINION - PRIEST
+    // [CAP_804] Specter Specialist - COST:3 [ATK:3/HP:2]
+    // Battlecry: Give a friendly minion Reborn. If it already has Reborn,
+    // summon a copy of it.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<ConditionTask>(
+        EntityType::TARGET,
+        SelfCondList{ std::make_shared<SelfCondition>(SelfCondition::HasReborn()) }));
+    currentCardDef.power.AddPowerTask(std::make_shared<FlagTask>(
+        true, TaskList{ std::make_shared<SummonCopyTask>(EntityType::TARGET,
+                                                         false, false,
+                                                         SummonSide::TARGET) }));
+    currentCardDef.power.AddPowerTask(std::make_shared<FlagTask>(
+        false, TaskList{ std::make_shared<SetGameTagTask>(
+                    EntityType::TARGET, GameTag::REBORN, 1) }));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 },
+        { PlayReq::REQ_FRIENDLY_TARGET, 0 }
+    };
+    cards.emplace("CAP_804", currentCardDef);
+
+    // ------------------------------------- LOCATION - WARRIOR
+    // [CATA_584] Erupting Volcano - COST:3 [DURABILITY:2]
+    // Deal 3 damage randomly split among enemies. If you played a Fire spell
+    // this turn, deal 3 more.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* location = dynamic_cast<Playable*>(source);
+            if (player == nullptr || location == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+
+            Player* opponent = player->game->GetOpponentPlayer();
+            if (opponent == nullptr || opponent->GetHero() == nullptr)
+            {
+                return;
+            }
+
+            std::vector<Character*> enemies{ opponent->GetHero() };
+            const auto& minions = opponent->GetFieldZone()->GetMinions();
+            enemies.insert(enemies.end(), minions.begin(), minions.end());
+            const int bonus = player->GetNumFireSpellsCastThisTurn() > 0 ? 3 : 0;
+            for (int hit = 0; hit < 3 + bonus; ++hit)
+            {
+                if (enemies.empty())
+                {
+                    break;
+                }
+
+                Character* victim = *Random::get(enemies);
+                Generic::TakeDamageToCharacter(location, victim, 1, false);
+                player->game->ProcessDestroyAndUpdateAura();
+                std::erase_if(enemies, [](const Character* character) {
+                    const auto* minion = dynamic_cast<const Minion*>(character);
+                    return minion != nullptr && minion->GetHealth() <= 0;
+                });
+            }
+    }));
+    cards.emplace("CATA_584", currentCardDef);
+
+    // ---------------------------------------- MINION - DRUID
+    // [JAIL_202] Spiderling - COST:1 [ATK:1/HP:2]
+    // Your hero has +1 Attack on your turn.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(std::make_shared<Aura>(
+        AuraType::HERO,
+        EffectList{ std::make_shared<Effect>(GameTag::ATK,
+                                             EffectOperator::ADD, 1) }));
+    if (const auto aura = dynamic_cast<Aura*>(currentCardDef.power.GetAura()); aura)
+    {
+        aura->condition = std::make_shared<SelfCondition>(SelfCondition::IsMyTurn());
+        aura->restless = true;
+    }
+    cards.emplace("JAIL_202", currentCardDef);
+
+    // ----------------------------------------- MINION - WARRIOR
+    // [CATA_556] Carrier Whelp - COST:1 [ATK:1/HP:2]
+    // Battlecry: Add a random Dragon that costs 3 or less to your hand.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+
+            const auto cards = player->game->GetFormatType() == FormatType::STANDARD
+                                   ? Cards::GetAllStandardCards()
+                                   : Cards::GetAllWildCards();
+            std::vector<Card*> dragons;
+            for (Card* card : cards)
+            {
+                if (card->GetCardType() == CardType::MINION &&
+                    card->GetRace() == Race::DRAGON && card->GetCost() <= 3)
+                {
+                    dragons.emplace_back(card);
+                }
+            }
+
+            if (!dragons.empty())
+            {
+                Generic::AddCardToHand(
+                    player, Entity::GetFromCard(player, *Random::get(dragons)));
+            }
+        }));
+    cards.emplace("CATA_556", currentCardDef);
+
+    // ----------------------------------------- MINION - WARRIOR
+    // [END_033] Prescient Slitherdrake - COST:7 [ATK:5/HP:8]
+    // Elusive. Costs (3) less while holding another Dragon.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(std::make_shared<AdaptiveCostEffect>(
+        [](const Playable* playable) {
+            if (playable == nullptr || playable->player == nullptr ||
+                playable->GetZoneType() != ZoneType::HAND)
+            {
+                return 0;
+            }
+
+            const auto hand = playable->player->GetHandZone()->GetAll();
+            const bool holdingAnotherDragon = std::any_of(
+                hand.begin(), hand.end(), [playable](const Playable* held) {
+                    return held != playable && held->card != nullptr &&
+                           held->card->GetRace() == Race::DRAGON;
+                });
+            return holdingAnotherDragon ? 3 : 0;
+        }));
+    cards.emplace("END_033", currentCardDef);
+
+    // ---------------------------------------- MINION - DRUID
+    // [JAIL_872] Spider Rider - COST:2 [ATK:1/HP:4]
+    // After your hero attacks, draw a card.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::AFTER_ATTACK));
+    currentCardDef.power.GetTrigger()->triggerSource = TriggerSource::HERO;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<DrawTask>(1)
+    };
+    cards.emplace("JAIL_872", currentCardDef);
+
+    // ---------------------------------------- MINION - NEUTRAL
+    // [TLC_600] Windpeak Wyrm - COST:8 [ATK:6/HP:6]
+    // Battlecry: Deal 5 damage and gain 5 Armor. Kindred: costs (3) less.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::TARGET, 5));
+    currentCardDef.power.AddPowerTask(std::make_shared<ArmorTask>(5));
+    currentCardDef.power.AddAura(std::make_shared<AdaptiveCostEffect>(
+        [](const Playable* playable) {
+            return playable != nullptr && playable->player != nullptr &&
+                           playable->player->GetNumDragonMinionsPlayedLastTurn() > 0
+                       ? 3
+                       : 0;
+        }));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_ENEMY_TARGET, 0 }
+    };
+    cards.emplace("TLC_600", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [TLC_816] Gravedawn Sunbloom - COST:4
+    // Draw 2 cards. Kindred: costs (2) less.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<DrawTask>(2));
+    currentCardDef.power.AddAura(std::make_shared<AdaptiveCostEffect>(
+        [](const Playable* playable) {
+            return playable != nullptr && playable->player != nullptr &&
+                           playable->player->GetNumHolySpellsCastLastTurn() > 0
+                       ? 2
+                       : 0;
+        }));
+    cards.emplace("TLC_816", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [JAIL_940] Undeath Sentence - COST:2
+    // Trigger the Deathrattle of a random friendly minion that died this game.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+
+            std::vector<Playable*> eligible;
+            for (Playable* dead : player->GetGraveyardZone()->GetAll())
+            {
+                if (dead != nullptr && dead->isDestroyed && dead->card != nullptr &&
+                    dead->card->GetCardType() == CardType::MINION &&
+                    dead->HasDeathrattle())
+                {
+                    eligible.emplace_back(dead);
+                }
+            }
+
+            if (eligible.empty())
+            {
+                return;
+            }
+
+            Playable* chosen = *Random::get(eligible);
+            chosen->ActivateTask(PowerType::DEATHRATTLE);
+            for (const auto& enchantment : chosen->appliedEnchantments)
+            {
+                for (const auto& task : enchantment->card->power.GetDeathrattleTask())
+                {
+                    auto copy = task->Clone();
+                    copy->SetPlayer(player);
+                    copy->SetSource(chosen);
+                    copy->SetTarget(nullptr);
+                    player->game->taskQueue.Enqueue(std::move(copy));
+                }
+            }
+        }));
+    cards.emplace("JAIL_940", currentCardDef);
+
+    // ------------------------------------------ MINION - PRIEST
+    // [CAP_806] Raith Van Geist - COST:7 [ATK:5/HP:5]
+    // Resurrect your minions that were Reborn this game. They attack random
+    // enemy minions.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source,
+           [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+
+            std::vector<Playable*> reborn;
+            for (Playable* dead : player->GetGraveyardZone()->GetAll())
+            {
+                if (dead == nullptr || !dead->isDestroyed || dead->card == nullptr ||
+                    dead->card->GetCardType() != CardType::MINION)
+                {
+                    continue;
+                }
+
+                if (dead->GetGameTag(GameTag::MANAMIND_REBORN_THIS_GAME) == 1)
+                {
+                    reborn.emplace_back(dead);
+                }
+            }
+
+            std::vector<Minion*> resurrected;
+            for (Playable* dead : reborn)
+            {
+                if (player->GetFieldZone()->IsFull())
+                {
+                    break;
+                }
+
+                auto* minion = dynamic_cast<Minion*>(dead);
+                if (minion == nullptr)
+                {
+                    continue;
+                }
+
+                minion->isDestroyed = false;
+                minion->SetDamage(0);
+                minion->SetGameTag(GameTag::REBORN, 0);
+                minion->SetGameTag(GameTag::NUM_ATTACKS_THIS_TURN, 0);
+                minion->SetExhausted(false);
+                player->GetGraveyardZone()->Remove(minion);
+                Generic::Summon(minion, player->GetFieldZone()->GetCount(), source);
+                resurrected.emplace_back(minion);
+            }
+
+            for (Minion* minion : resurrected)
+            {
+                const auto& enemies = player->opponent->GetFieldZone()->GetMinions();
+                if (enemies.empty())
+                {
+                    break;
+                }
+
+                Generic::Attack(player, minion, *Random::get(enemies), true);
+            }
+        }));
+    cards.emplace("CAP_806", currentCardDef);
+
+    // --------------------------------------- MINION - NEUTRAL
+    // [EDR_844] Naralex, Herald of the Flights - COST:7 [ATK:7/HP:7]
+    // Your first Dragon each turn costs (1) less.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(std::make_shared<Aura>(
+        AuraType::HAND, EffectList{ Effects::ReduceCost(1) }));
+    if (const auto aura = dynamic_cast<Aura*>(currentCardDef.power.GetAura()); aura)
+    {
+        aura->condition = std::make_shared<SelfCondition>(
+            [](Playable* playable) {
+                return playable != nullptr && playable->player != nullptr &&
+                       playable->card != nullptr &&
+                       playable->card->GetRace() == Race::DRAGON &&
+                       playable->player->GetNumDragonMinionsPlayedThisTurn() == 0;
+            });
+        aura->restless = true;
+    }
+    cards.emplace("EDR_844", currentCardDef);
+
+    // [FIR_959] Fyrakk the Blazing - Immune to Fire spells. Cast 15 Mana
+    // worth of Fire spells at random enemies.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<AddEnchantmentTask>("FIR_959e", EntityType::SOURCE));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<CastRandomSpellTask>(SpellSchool::FIRE, 15, true));
+    cards.emplace("FIR_959", currentCardDef);
+
+    // Fyrakk's immunity is an enchantment so Silence and transformations
+    // remove it with the rest of his card text.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(
+        std::vector<std::shared_ptr<IEffect>>{ std::make_shared<Effect>(
+            GameTag::MANAMIND_IMMUNE_TO_FIRE_SPELLS, EffectOperator::SET, 1) }));
+    cards.emplace("FIR_959e", currentCardDef);
+
+    // Shaladrassil records whether a card costing more than its current Cost
+    // was played while it remained in hand. PlayCard.cpp sets script data 1.
+    // On resolution it creates either the five classic Dreams or their
+    // dedicated corrupted counterparts.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source,
+           [[maybe_unused]] Playable* target) {
+            auto* playableSource = dynamic_cast<Playable*>(source);
+            if (player == nullptr || playableSource == nullptr)
+            {
+                return;
+            }
+
+            const bool corrupted = playableSource->GetGameTag(
+                GameTag::TAG_SCRIPT_DATA_NUM_1) != 0;
+            const std::vector<std::string> cardIDs = corrupted
+                ? std::vector<std::string>{ "EDR_846t1", "EDR_846t2",
+                                            "EDR_846t3", "EDR_846t4",
+                                            "EDR_846t5" }
+                : std::vector<std::string>{ "DREAM_05", "DREAM_04",
+                                            "DREAM_01", "DREAM_02",
+                                            "DREAM_03" };
+
+            for (const auto& cardID : cardIDs)
+            {
+                Card* card = Cards::FindCardByID(cardID);
+                if (card == nullptr)
+                {
+                    continue;
+                }
+
+                const std::map<GameTag, int> cardTags{
+                    { GameTag::CREATOR,
+                      source->GetGameTag(GameTag::ENTITY_ID) },
+                    { GameTag::DISPLAYED_CREATOR,
+                      source->GetGameTag(GameTag::ENTITY_ID) }
+                };
+                Playable* generated = Entity::GetFromCard(
+                    player, card, cardTags, player->GetSetasideZone());
+                Generic::AddCardToHand(player, generated);
+            }
+        }));
+    cards.emplace("EDR_846", currentCardDef);
+
+    // Corrupted Nightmare: +5/+5 and Immune for this turn.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(
+        std::vector<std::shared_ptr<IEffect>>{
+            Effects::AttackN(5), Effects::HealthN(5) }));
+    currentCardDef.power.AddPowerTask(std::make_shared<AddEnchantmentTask>(
+        "EDR_846t1e", EntityType::TARGET));
+    currentCardDef.power.AddPowerTask(std::make_shared<AddEnchantmentTask>(
+        "EDR_846t1f", EntityType::TARGET));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 }, { PlayReq::REQ_MINION_TARGET, 0 }
+    };
+    cards.emplace("EDR_846t1", currentCardDef);
+
+    // Corrupted Dream shuffles the chosen minion into its owner's deck.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, Playable* target) {
+            if (player == nullptr || target == nullptr || target->zone == nullptr ||
+                target->player == nullptr)
+            {
+                return;
+            }
+
+            Player* owner = target->player;
+            Playable* moved = target->zone->Remove(target);
+            if (moved != nullptr)
+            {
+                moved->Reset();
+                Generic::ShuffleIntoDeck(owner, source, moved);
+            }
+        }));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 }, { PlayReq::REQ_MINION_TARGET, 0 }
+    };
+    cards.emplace("EDR_846t2", currentCardDef);
+
+    // Corrupted Laughing Sister is Elusive and gives its controller's hero
+    // the same targeting protection while it remains on the battlefield.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddAura(std::make_shared<Aura>(AuraType::HERO,
+        Effects::CantBeTargetedBySpellsAndHeroPowers()));
+    cards.emplace("EDR_846t3", currentCardDef);
+
+    // Corrupted Awakening deals 5 damage to all enemy characters, including
+    // Ysera (unlike the original Ysera Awakens).
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::ENEMIES, 5, true));
+    cards.emplace("EDR_846t4", currentCardDef);
+
+    currentCardDef.ClearData();
+    cards.emplace("EDR_846t5", currentCardDef);
+
+    // Enchantment entity referenced by Corrupted Nightmare.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(
+        std::vector<std::shared_ptr<IEffect>>{
+            Effects::AttackN(5), Effects::HealthN(5) }));
+    cards.emplace("EDR_846t1e", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddEnchant(std::make_shared<Enchant>(Effects::Immune,
+                                                              false, true));
+    cards.emplace("EDR_846t1f", currentCardDef);
+
+    // ---------------------------------------- MINION - WARRIOR
+    // [CAP_107] Cannonmaster - COST:1 [ATK:3/HP:1]
+    // Battlecry: Get a 1/1 Cannoneer that deals 1 damage to a random enemy
+    // at end of turn.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* playableSource = dynamic_cast<Playable*>(source);
+            Card* tokenCard = Cards::FindCardByID("CAP_107t");
+            if (player == nullptr || playableSource == nullptr || tokenCard == nullptr)
+            {
+                return;
+            }
+
+            std::map<GameTag, int> cardTags{
+                { GameTag::CREATOR, source->GetGameTag(GameTag::ENTITY_ID) },
+                { GameTag::DISPLAYED_CREATOR,
+                  source->GetGameTag(GameTag::ENTITY_ID) }
+            };
+            Playable* cannoneer = Entity::GetFromCard(
+                player, tokenCard, cardTags, player->GetSetasideZone());
+            Generic::AddCardToHand(player, cannoneer);
+        }));
+    cards.emplace("CAP_107", currentCardDef);
+
+    // ---------------------------------------- MINION - WARRIOR
+    // [CAP_107t] Cannoneer - COST:1 [ATK:1/HP:1]
+    // At the end of your turn, deal 1 damage to a random enemy.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TURN_END));
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<CustomTask>(
+            [](Player* player, Entity* source,
+               [[maybe_unused]] Playable* target) {
+                auto* playableSource = dynamic_cast<Playable*>(source);
+                if (player == nullptr || playableSource == nullptr ||
+                    player->game == nullptr || player->game->GetOpponentPlayer() == nullptr)
+                {
+                    return;
+                }
+
+                Player* opponent = player->game->GetOpponentPlayer();
+                std::vector<Character*> enemies{ opponent->GetHero() };
+                const auto& minions = opponent->GetFieldZone()->GetMinions();
+                enemies.insert(enemies.end(), minions.begin(), minions.end());
+                if (enemies.empty())
+                {
+                    return;
+                }
+
+                Character* victim = *Random::get(enemies);
+                Generic::TakeDamageToCharacter(playableSource, victim, 1, false);
+                player->game->ProcessDestroyAndUpdateAura();
+            })
+    };
+    cards.emplace("CAP_107t", currentCardDef);
+
+    // ------------------------------------------ SPELL - WARRIOR
+    // [CAP_105] Hook n' Heave - Discover a Pirate and summon two Cannoneers.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DiscoverTask>(DiscoverType::PIRATE));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<SummonTask>("CAP_107t", 2));
+    cards.emplace("CAP_105", currentCardDef);
+
+    // ---------------------------------------- MINION - WARRIOR
+    // [JAIL_384] Chainbreaker Hogger
+    // Taunt. Start of Game: Duplicate other Legendary cards in your deck.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::GAME_START));
+    currentCardDef.power.GetTrigger()->triggerActivation = TriggerActivation::DECK;
+    currentCardDef.power.GetTrigger()->removeAfterTriggered = true;
+    currentCardDef.power.GetTrigger()->fastExecution = true;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<CustomTask>(
+            [](Player* player, Entity* source,
+               [[maybe_unused]] Playable* target) {
+                if (player == nullptr || source == nullptr ||
+                    source->card == nullptr || player->GetDeckZone() == nullptr)
+                {
+                    return;
+                }
+
+                std::vector<Card*> legendaryCards;
+                for (Playable* playable : player->GetDeckZone()->GetAll())
+                {
+                    if (playable != nullptr && playable->card != nullptr &&
+                        playable->card->id != source->card->id &&
+                        playable->card->GetRarity() == Rarity::LEGENDARY)
+                    {
+                        legendaryCards.emplace_back(playable->card);
+                    }
+                }
+
+                auto* deck = player->GetDeckZone();
+                for (Card* card : legendaryCards)
+                {
+                    Playable* copy = Entity::GetFromCard(player, card, std::nullopt, deck);
+                    deck->Add(copy);
+                }
+                if (!legendaryCards.empty())
+                {
+                    deck->Shuffle();
+                }
+            })
+    };
+    cards.emplace("JAIL_384", currentCardDef);
+
+    // ---------------------------------------- MINION - DRUID
+    // [EDR_000] Ysera, Emerald Aspect
+    // Start of Game: Increase both players' maximum Mana by 5.
+    // Battlecry: Gain 3 Mana Crystals.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<ManaCrystalTask>(3, false));
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::GAME_START));
+    currentCardDef.power.GetTrigger()->triggerActivation = TriggerActivation::DECK;
+    currentCardDef.power.GetTrigger()->removeAfterTriggered = true;
+    currentCardDef.power.GetTrigger()->fastExecution = true;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<CustomTask>(
+            [](Player* player, [[maybe_unused]] Entity* source,
+               [[maybe_unused]] Playable* target) {
+                if (player == nullptr || player->game == nullptr ||
+                    player->game->GetOpponentPlayer() == nullptr)
+                {
+                    return;
+                }
+                Generic::ChangeManaCrystal(player, 5, false);
+                Generic::ChangeManaCrystal(
+                    player->game->GetOpponentPlayer(), 5, false);
+            })
+    };
+    cards.emplace("EDR_000", currentCardDef);
+
+    // ---------------------------------------- MINION - WARRIOR
+    // [EDR_457] Brood Keeper - Battlecry: If you're holding a Dragon, equip
+    // a 2/2 Sword.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->GetHandZone() == nullptr)
+            {
+                return;
+            }
+
+            const auto handCards = player->GetHandZone()->GetAll();
+            const bool holdingDragon = std::any_of(
+                handCards.begin(), handCards.end(), [](const Playable* card) {
+                    return card != nullptr && card->card != nullptr &&
+                           card->card->GetRace() == Race::DRAGON;
+                });
+            if (!holdingDragon)
+            {
+                return;
+            }
+
+            WeaponTask equip("EDR_457t");
+            equip.SetPlayer(player);
+            equip.SetSource(source);
+            equip.Run();
+        }));
+    cards.emplace("EDR_457", currentCardDef);
+
+    // ---------------------------------------- MINION - NEUTRAL
+    // [EDR_492] Mother Duck - Battlecry: Summon three 1/1 Ducklings with Rush.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<SummonTask>("EDR_492t", 3));
+    cards.emplace("EDR_492", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [EDR_463] Twilight Influence - Choose One: destroy a minion with 3 or
+    // less Attack; or summon a random 2-Cost minion.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(nullptr);
+    currentCardDef.property.chooseCardIDs =
+        ChooseCardIDs{ "MM_EDR_463a", "MM_EDR_463b" };
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_IF_AVAILABLE, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 }
+    };
+    cards.emplace("EDR_463", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DestroyTask>(EntityType::TARGET));
+    currentCardDef.property.playReqs = PlayReqs{
+        { PlayReq::REQ_TARGET_TO_PLAY, 0 },
+        { PlayReq::REQ_MINION_TARGET, 0 },
+        { PlayReq::REQ_TARGET_MAX_ATTACK, 3 }
+    };
+    cards.emplace("MM_EDR_463a", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<RandomMinionTask>(
+        TagValues{ { GameTag::COST, 2, RelaSign::EQ } }));
+    currentCardDef.power.AddPowerTask(std::make_shared<SummonTask>());
+    cards.emplace("MM_EDR_463b", currentCardDef);
+
+    // ------------------------------------------ SPELL - DRUID
+    // [JAIL_201] Secret Ingredient - Choose One: give your hero +2 Attack
+    // this turn; or get a random Druid card.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(nullptr);
+    currentCardDef.property.chooseCardIDs =
+        ChooseCardIDs{ "MM_JAIL_201a", "MM_JAIL_201b" };
+    cards.emplace("JAIL_201", currentCardDef);
+
+    // ------------------------------------------ WEAPON - DRUID
+    // [JAIL_875] Staff of Trickery - After your hero attacks, Discover a
+    // Druid card. Reduce its Cost by your hero's Attack.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::AFTER_ATTACK));
+    currentCardDef.power.GetTrigger()->triggerSource = TriggerSource::HERO;
+    currentCardDef.power.GetTrigger()->tasks = {
+        std::make_shared<DiscoverTask>(DiscoverType::DRUID_CARD)
+    };
+    cards.emplace("JAIL_875", currentCardDef);
+
+    // [JAIL_200] Infest the Scullery - Summon two random minions whose Cost
+    // increases by one for each time your hero attacked this game.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source,
+           [[maybe_unused]] Playable* target) {
+            if (player == nullptr || source == nullptr || player->game == nullptr)
+            {
+                return;
+            }
+            const int cost = 3 + player->GetNumHeroAttacksThisGame();
+            for (int i = 0; i < 2; ++i)
+            {
+                RandomMinionTask randomMinion(
+                    TagValues{ { GameTag::COST, cost, RelaSign::EQ } });
+                randomMinion.SetPlayer(player);
+                randomMinion.SetSource(source);
+                randomMinion.Run();
+                SummonTask summonMinion;
+                summonMinion.SetPlayer(player);
+                summonMinion.SetSource(source);
+                summonMinion.Run();
+            }
+        }));
+    cards.emplace("JAIL_200", currentCardDef);
+
+    // [JAIL_421] Warptooth - Charge. If four different friendly characters
+    // take damage on your turn, summon this from your hand or deck.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddTrigger(
+        std::make_shared<Trigger>(TriggerType::TAKE_DAMAGE));
+    currentCardDef.power.GetTrigger()->triggerSource = TriggerSource::FRIENDLY;
+    currentCardDef.power.GetTrigger()->triggerActivation =
+        TriggerActivation::HAND_OR_DECK;
+    currentCardDef.power.GetTrigger()->tasks = { std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, Playable* target) {
+            auto* card = dynamic_cast<Playable*>(source);
+            auto* damagedCharacter = dynamic_cast<Character*>(target);
+            if (player == nullptr || card == nullptr || damagedCharacter == nullptr ||
+                player->game == nullptr || damagedCharacter->player != player ||
+                player->game->GetCurrentPlayer() != player)
+            {
+                return;
+            }
+
+            const int damagedCount = player->RegisterDamagedFriendlyCharacter(
+                player->game->GetTurn(),
+                damagedCharacter->GetGameTag(GameTag::ENTITY_ID));
+            if (damagedCount < 4 || player->GetFieldZone()->IsFull())
+            {
+                return;
+            }
+
+            if (card->GetZoneType() == ZoneType::HAND)
+            {
+                player->GetHandZone()->Remove(card);
+            }
+            else if (card->GetZoneType() == ZoneType::DECK)
+            {
+                player->GetDeckZone()->Remove(card);
+            }
+            else
+            {
+                return;
+            }
+
+            Generic::Summon(dynamic_cast<Minion*>(card), -1, card);
+        }) };
+    cards.emplace("JAIL_421", currentCardDef);
+
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<AddEnchantmentTask>("TRL_243e", EntityType::HERO));
+    cards.emplace("MM_JAIL_201a", currentCardDef);
+
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<RandomCardTask>(
+        CardType::INVALID, CardClass::DRUID));
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<AddStackToTask>(EntityType::HAND));
+    cards.emplace("MM_JAIL_201b", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [DINO_426] Ritual of Life - Discover a 3-Cost minion. Summon a 2/3 copy.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<DiscoverTask>(
+        DiscoverType::THREE_COST_MINION));
+    cards.emplace("DINO_426", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [JAIL_941] Holy Embrace - Restore 4 Health. Get a Dark Embrace.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<HealTask>(EntityType::HERO, 4));
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            Card* tokenCard = Cards::FindCardByID("JAIL_941t");
+            if (player == nullptr || source == nullptr || tokenCard == nullptr)
+            {
+                return;
+            }
+
+            std::map<GameTag, int> cardTags{
+                { GameTag::CREATOR, source->GetGameTag(GameTag::ENTITY_ID) },
+                { GameTag::DISPLAYED_CREATOR,
+                  source->GetGameTag(GameTag::ENTITY_ID) }
+            };
+            Playable* darkEmbrace = Entity::GetFromCard(
+                player, tokenCard, cardTags, player->GetSetasideZone());
+            Generic::AddCardToHand(player, darkEmbrace);
+        }));
+    cards.emplace("JAIL_941", currentCardDef);
+
+    // ------------------------------------------ SPELL - PRIEST
+    // [JAIL_941t] Dark Embrace - Deal 4 damage.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DamageTask>(EntityType::TARGET, 4, true));
+    currentCardDef.property.playReqs =
+        PlayReqs{ { PlayReq::REQ_TARGET_TO_PLAY, 0 } };
+    cards.emplace("JAIL_941t", currentCardDef);
+
+    // ------------------------------------------ SPELL - DRUID
+    // [TIME_701] Waveshaping - COST:2
+    // Discover a card from your deck. The unchosen cards stay in the deck.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(
+        std::make_shared<DiscoverTask>(DiscoverType::DECK));
+    cards.emplace("TIME_701", currentCardDef);
+
+    // -------------------------------------- LOCATION - DRUID
+    // [FIR_907] Amirdrassil - Summon a 1-Cost minion. Gain 1 Armor. Draw 1.
+    // Refresh 1 Mana, increasing by one each time this Location is used.
+    currentCardDef.ClearData();
+    currentCardDef.power.AddPowerTask(std::make_shared<RandomMinionTask>(
+        TagValues{ { GameTag::COST, 1, RelaSign::EQ } }));
+    currentCardDef.power.AddPowerTask(std::make_shared<SummonTask>());
+    currentCardDef.power.AddPowerTask(std::make_shared<ArmorTask>(1));
+    currentCardDef.power.AddPowerTask(std::make_shared<DrawTask>(1));
+    currentCardDef.power.AddPowerTask(std::make_shared<CustomTask>(
+        [](Player* player, Entity* source, [[maybe_unused]] Playable* target) {
+            auto* location = dynamic_cast<Playable*>(source);
+            if (player == nullptr || location == nullptr)
+            {
+                return;
+            }
+            const int refreshAmount = std::min(
+                4, location->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1) + 1);
+            location->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1,
+                                  refreshAmount);
+            RefreshManaTask refresh(refreshAmount);
+            refresh.SetPlayer(player);
+            refresh.SetSource(location);
+            refresh.Run();
+        }));
+    cards.emplace("FIR_907", currentCardDef);
 }
 }  // namespace RosettaStone::PlayMode

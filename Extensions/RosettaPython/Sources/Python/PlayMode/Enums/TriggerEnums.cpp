@@ -92,7 +92,8 @@ void AddTriggerEnums(pybind11::module& m)
         .value("PLAY", TriggerActivation::PLAY)
         .value("HAND", TriggerActivation::HAND)
         .value("DECK", TriggerActivation::DECK)
-        .value("HAND_OR_PLAY", TriggerActivation::HAND_OR_PLAY);
+        .value("HAND_OR_PLAY", TriggerActivation::HAND_OR_PLAY)
+        .value("HAND_OR_DECK", TriggerActivation::HAND_OR_DECK);
 
     pybind11::enum_<SequenceType>(
         m, "SequenceType",

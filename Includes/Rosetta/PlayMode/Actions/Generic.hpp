@@ -25,6 +25,13 @@ void TakeDamageToCharacter(Playable* source, Character* target, int amount,
 //! \return The flag that indicates a card is successfully added to hand.
 bool AddCardToHand(const Player* player, Playable* entity);
 
+//! Adds a real mana payment to the held-mana history of supported cards.
+//! \param player The player who paid the Mana.
+//! \param amount The amount of Mana paid.
+//! \param excluded The card being played or traded, if any.
+void TrackManaSpentWhileHeld(Player* player, int amount,
+                             const Playable* excluded = nullptr);
+
 //! Creates a new enchantment and attaches it to the given target.
 //! \param enchantmentCard The base card for the enchantment.
 //! \param creator The creator entity.

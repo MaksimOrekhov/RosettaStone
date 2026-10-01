@@ -5,10 +5,13 @@
 // property of any third parties.
 
 #include <Rosetta/Common/Utils.hpp>
+#include <Rosetta/Common/Constants.hpp>
 #include <Rosetta/PlayMode/Loaders/CardLoader.hpp>
 
 #include <fstream>
 #include <regex>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace RosettaStone::PlayMode
 {
@@ -26,6 +29,95 @@ void CardLoader::Load(std::vector<Card*>& cards)
 
     cardFile >> j;
 
+    // ManaMind keeps its current Standard collectible metadata in a separate
+    // overlay so updating it does not replace RosettaStone's historical cards
+    // and non-collectible tokens. Current records replace matching metadata;
+    // new records are appended for Cards::FindCardByID.
+    std::ifstream standardCardFile(RESOURCES_DIR "cards.standard_current.json");
+    if (standardCardFile.is_open())
+    {
+        nlohmann::json standardCards;
+        standardCardFile >> standardCards;
+        std::unordered_set<std::string> standardCardIds;
+        standardCardIds.reserve(standardCards.size());
+        for (const auto& standardCard : standardCards)
+        {
+            const auto id = standardCard.value("id", std::string{});
+            if (!id.empty() && standardCard.value("collectible", 0) == 1)
+            {
+                standardCardIds.emplace(id);
+            }
+        }
+
+        std::unordered_map<std::string, std::size_t> cardIndices;
+        cardIndices.reserve(j.size() + standardCards.size());
+        for (std::size_t index = 0; index < j.size(); ++index)
+        {
+            const auto id = j[index].value("id", std::string{});
+            if (!id.empty())
+            {
+                cardIndices.emplace(id, index);
+            }
+        }
+
+        for (const auto& standardCard : standardCards)
+        {
+            const auto id = standardCard.value("id", std::string{});
+            if (id.empty())
+            {
+                continue;
+            }
+
+            const auto existing = cardIndices.find(id);
+            if (existing == cardIndices.end())
+            {
+                j.emplace_back(standardCard);
+                cardIndices.emplace(id, j.size() - 1);
+                continue;
+            }
+
+            auto& existingCard = j[existing->second];
+            for (auto field = standardCard.begin(); field != standardCard.end();
+                 ++field)
+            {
+                existingCard[field.key()] = field.value();
+            }
+        }
+
+        // The historical base database contains retired collectible cards
+        // whose old metadata still labels them as CORE. Keep those records
+        // available for Wild, but do not leak them into current Standard
+        // random/Discover pools. The current collectible overlay is the
+        // authoritative membership list for each configured Standard set.
+        const std::unordered_set<CardSet> standardSets(
+            STANDARD_CARD_SETS.begin(), STANDARD_CARD_SETS.end());
+        for (auto& cardData : j)
+        {
+            if (cardData.value("collectible", 0) != 1)
+            {
+                continue;
+            }
+
+            const auto id = cardData.value("id", std::string{});
+            if (standardCardIds.contains(id))
+            {
+                continue;
+            }
+
+            const auto setName = cardData.value("set", std::string{});
+            if (setName.empty())
+            {
+                continue;
+            }
+
+            const auto cardSet = StrToEnum<CardSet>(setName);
+            if (standardSets.contains(cardSet))
+            {
+                cardData["set"] = "LEGACY";
+            }
+        }
+    }
+
     cards.reserve(j.size());
 
     std::regex spellburstRegex("([<b>]*<b>Spellburst[</b>]*:</b>)");
@@ -34,6 +126,7 @@ void CardLoader::Load(std::vector<Card*>& cards)
     std::regex tradeableRegex("<b>Tradeable[.]*</b>");
     std::regex questlineRegex("<b>Questline:[ ]*</b>");
     std::regex infusedRegex("<b>.*Infused.*</b>");
+    std::regex multipleSpacesRegex("[' ']{2,}");
     std::smatch values;
 
     for (auto& cardData : j)
@@ -56,6 +149,9 @@ void CardLoader::Load(std::vector<Card*>& cards)
                                      : cardData["name"].get<std::string>();
         const int dbfID =
             cardData["dbfId"].is_null() ? 0 : cardData["dbfId"].get<int>();
+        const int collectible = cardData["collectible"].is_null()
+                                    ? 0
+                                    : cardData["collectible"].get<int>();
         std::string text = cardData["text"].is_null()
                                ? ""
                                : cardData["text"].get<std::string>();
@@ -72,7 +168,7 @@ void CardLoader::Load(std::vector<Card*>& cards)
                                        cardData["type"].get<std::string>()));
         const int cardClass =
             cardData["cardClass"].is_null()
-                ? 0
+                ? static_cast<int>(CardClass::NEUTRAL)
                 : static_cast<int>(StrToEnum<CardClass>(
                       cardData["cardClass"].get<std::string>()));
         const int multiClassGroup =
@@ -80,9 +176,6 @@ void CardLoader::Load(std::vector<Card*>& cards)
                 ? 0
                 : static_cast<int>(StrToEnum<MultiClassGroup>(
                       cardData["multiClassGroup"].get<std::string>()));
-        const int collectible = cardData["collectible"].is_null()
-                                    ? 0
-                                    : cardData["collectible"].get<int>();
         const int cost =
             cardData["cost"].is_null() ? 0 : cardData["cost"].get<int>();
         const int durability = cardData["durability"].is_null()
@@ -124,7 +217,22 @@ void CardLoader::Load(std::vector<Card*>& cards)
         std::map<GameTag, int> gameTags;
         for (auto& mechanic : cardData["mechanics"])
         {
-            GameTag gameTag = StrToEnum<GameTag>(mechanic.get<std::string>());
+            const std::string mechanicName = mechanic.get<std::string>();
+            // Elusive is the current keyword for an existing targeting rule;
+            // this engine predates the keyword name used by card metadata.
+            if (mechanicName == "ELUSIVE")
+            {
+                gameTags.emplace(GameTag::CANT_BE_TARGETED_BY_OPPONENTS, 1);
+                continue;
+            }
+
+            GameTag gameTag = StrToEnum<GameTag>(mechanicName);
+            if (gameTag == GameTag::INVALID)
+            {
+                // HearthstoneJSON can publish mechanics newer than this engine.
+                // Do not insert INVALID as though it were a real card keyword.
+                continue;
+            }
 
             // NOTE: Erase mechanics 'FREEZE' of Frost Elemental (EX1_283)
             // NOTE: Erase mechanics 'FREEZE' of Frost Elemental (VAN_EX1_283)
@@ -192,7 +300,7 @@ void CardLoader::Load(std::vector<Card*>& cards)
         // Remove unnecessary whitespace
         std::string::size_type pos = text.find_first_not_of(' ');
         text.erase(0, pos);
-        text = std::regex_replace(text, std::regex("[' ']{2,}"), " ");
+        text = std::regex_replace(text, multipleSpacesRegex, " ");
 
         card->text = text;
 

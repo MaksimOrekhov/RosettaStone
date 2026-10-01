@@ -10,8 +10,10 @@
 #include <Rosetta/Common/Enums/CardEnums.hpp>
 #include <Rosetta/Common/Enums/ChoiceEnums.hpp>
 #include <Rosetta/PlayMode/Models/Entity.hpp>
+#include <Rosetta/PlayMode/Models/DarkGift.hpp>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace RosettaStone::PlayMode
@@ -26,6 +28,8 @@ struct Choice
     //! Constructs task with given \p _player.
     //! \param _player The player context.
     explicit Choice(Player* _player);
+
+    ~Choice();
 
     //! Constructs task with given \p _player and \p _cardSets.
     //! \param _player The player context.
@@ -52,6 +56,9 @@ struct Choice
     std::vector<Card*> cardSets;
     std::vector<int> choices;
     std::vector<int> entityStack;
+    // Dark Gift is part of the option identity: two options can reference the
+    // same minion card while carrying different gifts.
+    std::vector<std::pair<int, DarkGift>> darkGiftOptionsByEntityID;
 
     int depth = 1;
     int lastChoice = 0;

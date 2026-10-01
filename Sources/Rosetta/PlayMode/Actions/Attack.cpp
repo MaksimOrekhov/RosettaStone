@@ -64,6 +64,14 @@ void Attack(const Player* player, Character* source, Character* target,
     const int targetAttack = realTarget->GetAttack();
     const int sourceAttack = source->GetAttack();
 
+    // Staff of Trickery uses the hero's attack value from the attack event.
+    // The hero's attack tag is cleared when the hero becomes exhausted below.
+    if (hero && hero->HasWeapon() && hero->weapon->card &&
+        hero->weapon->card->id == "JAIL_875")
+    {
+        hero->weapon->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_2, sourceAttack);
+    }
+
     // Remove durability from weapon if hero attack
     if (hero && hero->HasWeapon() &&
         hero->weapon->GetGameTag(GameTag::IMMUNE) == 0)
@@ -170,6 +178,11 @@ void Attack(const Player* player, Character* source, Character* target,
     // Increase the number of attacked
     const int val = source->GetNumAttacksThisTurn();
     source->SetNumAttacksThisTurn(val + 1);
+
+    if (hero)
+    {
+        const_cast<Player*>(player)->IncreaseNumHeroAttacksThisGame();
+    }
 
     // Check source is exhausted
     if ((source->GetNumAttacksThisTurn() >= 4 && source->HasMegaWindfury()) ||

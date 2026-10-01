@@ -7,6 +7,7 @@
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Loaders/TargetingPredicates.hpp>
 #include <Rosetta/PlayMode/Models/Minion.hpp>
+#include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Models/Player.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
 #include <Rosetta/PlayMode/Zones/HandZone.hpp>
@@ -101,6 +102,12 @@ TargetingPredicate TargetingPredicates::ReqTargetWithRace(Race race)
         case Race::UNDEAD:
         case Race::EGG:
             return []([[maybe_unused]] Character* character) { return true; };
+        case Race::ALL:
+            return [](Character* character) {
+                return dynamic_cast<Minion*>(character) != nullptr &&
+                       character->card->gameTags.contains(GameTag::CARDRACE) &&
+                       character->card->GetRace() != Race::INVALID;
+            };
         default:
             throw std::invalid_argument(
                 "TargetingPredicates::ReqTargetWithRace() - "

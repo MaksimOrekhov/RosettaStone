@@ -67,6 +67,11 @@ class DiscoverTask : public ITask
     explicit DiscoverTask(DiscoverType discoverType, int numberOfChoices = 3,
                           int repeat = 1, bool doShuffle = true);
 
+    //! Constructs a deck discover task with an explicit choice action.
+    explicit DiscoverTask(DiscoverType discoverType, int numberOfChoices,
+                          int repeat, bool doShuffle,
+                          ChoiceAction choiceAction);
+
     //! Constructs task with given various parameters.
     //! \param cards A list of cards to discover.
     //! \param discoverType The type of discover.
@@ -133,6 +138,7 @@ class DiscoverTask : public ITask
     DiscoverType m_discoverType = DiscoverType::INVALID;
     DiscoverCriteria m_discoverCriteria;
     ChoiceAction m_choiceAction = ChoiceAction::INVALID;
+    ChoiceAction m_configuredChoiceAction = ChoiceAction::INVALID;
     int m_numberOfChoices = 3;
     int m_repeat = 1;
     bool m_doShuffle = true;

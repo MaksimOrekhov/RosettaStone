@@ -20,6 +20,15 @@
 #include <Rosetta/PlayMode/CardSets/KaraCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LegacyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LoECardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindCoreAliasCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindKeywordOnlyCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindEffectCompositionGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindDarkGiftCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindDragonPoolCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindAfterAttackDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindRepeatedTriggerDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindFilteredSchoolDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindMetadataOnlyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LootapaloozaCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/NaxxCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/OgCardsGen.hpp>
@@ -77,6 +86,15 @@ CardDefs::CardDefs()
     RevendrethCardsGen::AddAll(m_data);
     ReturnOfTheLichKingCardsGen::AddAll(m_data);
     Placeholder202204CardsGen::AddAll(m_data);
+    ManaMindCoreAliasCardsGen::AddAll(m_data);
+    ManaMindKeywordOnlyCardsGen::AddAll(m_data);
+    ManaMindEffectCompositionGen::AddAll(m_data);
+    ManaMindDarkGiftCardsGen::AddAll(m_data);
+    ManaMindDragonPoolCardsGen::AddAll(m_data);
+    ManaMindAfterAttackDrawCardsGen::AddAll(m_data);
+    ManaMindRepeatedTriggerDrawGen::AddAll(m_data);
+    ManaMindFilteredSchoolDrawGen::AddAll(m_data);
+    ManaMindMetadataOnlyCardsGen::AddAll(m_data);
 }
 
 CardDefs::~CardDefs()
@@ -92,14 +110,17 @@ CardDefs& CardDefs::GetInstance()
 
 CardDef CardDefs::FindCardDefByID(const std::string_view& id)
 {
-    for (auto& data : m_data)
+    const auto it = m_data.find(std::string(id));
+    if (it != m_data.end())
     {
-        if (data.first == id)
-        {
-            return data.second;
-        }
+        return it->second;
     }
 
     return CardDef();
+}
+
+bool CardDefs::HasCardDefByID(const std::string_view& id)
+{
+    return m_data.contains(std::string(id));
 }
 }  // namespace RosettaStone::PlayMode

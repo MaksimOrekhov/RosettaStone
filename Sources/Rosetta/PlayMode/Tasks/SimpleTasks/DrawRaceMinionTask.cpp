@@ -5,10 +5,13 @@
 
 #include <Rosetta/PlayMode/Actions/Draw.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
+#include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DrawRaceMinionTask.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
 
 #include <effolkronium/random.hpp>
+
+#include <algorithm>
 
 using Random = effolkronium::random_static;
 
@@ -38,9 +41,11 @@ TaskStatus DrawRaceMinionTask::Impl(Player* player)
 
     for (auto& deckCard : deck)
     {
-        if (deckCard->card->GetCardType() == CardType::MINION &&
-            (deckCard->card->GetRace() == m_race ||
-             deckCard->card->GetRace() == Race::ALL))
+        const auto race = deckCard->card->gameTags.find(GameTag::CARDRACE);
+        if (dynamic_cast<Minion*>(deckCard) &&
+            race != deckCard->card->gameTags.end() &&
+            (race->second == static_cast<int>(m_race) ||
+             race->second == static_cast<int>(Race::ALL)))
         {
             cards.emplace_back(deckCard);
         }
@@ -51,9 +56,11 @@ TaskStatus DrawRaceMinionTask::Impl(Player* player)
         return TaskStatus::STOP;
     }
 
-    if (static_cast<int>(cards.size()) <= m_amount)
+    const auto drawCount = std::min(m_amount, static_cast<int>(cards.size()));
+
+    if (static_cast<int>(cards.size()) <= drawCount)
     {
-        for (int i = 0; i < m_amount; ++i)
+        for (int i = 0; i < drawCount; ++i)
         {
             if (m_addToStack)
             {
@@ -65,7 +72,7 @@ TaskStatus DrawRaceMinionTask::Impl(Player* player)
     }
     else
     {
-        for (int i = 0; i < m_amount; ++i)
+        for (int i = 0; i < drawCount; ++i)
         {
             const auto pick = Random::get<std::size_t>(0, cards.size() - 1);
 

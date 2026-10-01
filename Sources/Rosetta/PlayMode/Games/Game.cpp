@@ -29,6 +29,12 @@ using namespace RosettaStone::PlayMode::PlayerTasks;
 
 namespace RosettaStone::PlayMode
 {
+Game::~Game()
+{
+    // Keep destruction in the engine library. SimulatorSession lives in a
+    // separate Python module, and its compiler settings may differ.
+}
+
 Game::Game()
 {
     Initialize();
@@ -340,6 +346,7 @@ void Game::MainReady()
 
         // Player
         player.SetNumCardsDrawnThisTurn(0);
+        player.SetNumFireSpellsCastThisTurn(0);
         player.SetNumCardsPlayedThisTurn(0);
         player.SetNumMinionsPlayedThisTurn(0);
         player.SetNumTauntMinionsPlayedThisTurn(0);
@@ -377,6 +384,13 @@ void Game::MainReady()
     curPlayer->SetNumElementalPlayedLastTurn(numElementalPlayedThisTurn);
     curPlayer->SetNumElementalPlayedThisTurn(0);
 
+    curPlayer->SetNumDragonMinionsPlayedLastTurn(
+        curPlayer->GetNumDragonMinionsPlayedThisTurn());
+    curPlayer->SetNumDragonMinionsPlayedThisTurn(0);
+    curPlayer->SetNumHolySpellsCastLastTurn(
+        curPlayer->GetNumHolySpellsCastThisTurn());
+    curPlayer->SetNumHolySpellsCastThisTurn(0);
+
     const int numSpellCastThisTurn = curPlayer->GetNumSpellsCastThisTurn();
     curPlayer->SetNumSpellsCastLastTurn(numSpellCastThisTurn);
     curPlayer->SetNumSpellsCastThisTurn(0);
@@ -397,6 +411,9 @@ void Game::MainReady()
 
 void Game::MainStartTriggers()
 {
+    // Expire unused temporary Mana from the previous turn before start-of-turn
+    // triggers can grant temporary Mana for the current turn.
+    GetCurrentPlayer()->SetTemporaryMana(0);
     triggerManager.OnStartTurnTrigger(GetCurrentPlayer());
     ProcessTasks();
     ProcessDestroyAndUpdateAura();
@@ -418,9 +435,6 @@ void Game::MainResource()
 
     // Clear used mana
     curPlayer->SetUsedMana(0);
-    // Remove temporary mana
-    curPlayer->SetTemporaryMana(0);
-
     // Process overload
     curPlayer->SetOverloadLocked(curPlayer->GetOverloadOwed());
     curPlayer->SetOverloadOwed(0);
@@ -460,7 +474,8 @@ void Game::MainStart()
 
 void Game::MainAction()
 {
-    // Do nothing
+    GetPlayer1()->ReturnOverdrawnCardsToHand();
+    GetPlayer2()->ReturnOverdrawnCardsToHand();
 }
 
 void Game::MainEnd()
@@ -493,7 +508,32 @@ void Game::MainEnd()
 
 void Game::MainCleanUp()
 {
+    // Keep temporary hand cards scoped to the turn that discovered them.
     const auto curPlayer = GetCurrentPlayer();
+
+    // Temporary cards expire after their owner's end-of-turn triggers resolve.
+    for (const int entityID : temporaryCardEntityIDs)
+    {
+        const auto found = entityList.find(entityID);
+        if (found == entityList.end())
+        {
+            continue;
+        }
+
+        auto* playable = dynamic_cast<Playable*>(found->second);
+        if (!playable || playable->GetZoneType() != ZoneType::HAND ||
+            !playable->player)
+        {
+            continue;
+        }
+
+        // The turn transition can update GetCurrentPlayer() before cleanup
+        // runs. Use the card's owner so temporary cards still expire for the
+        // player who discovered them.
+        playable->player->GetGraveyardZone()->Add(
+            playable->zone->Remove(playable));
+    }
+    temporaryCardEntityIDs.clear();
 
     // Remove ghostly cards
     for (auto& id : ghostlyCards)
@@ -782,6 +822,9 @@ std::tuple<PlayState, PlayState> Game::Process(Player* player,
 
     taskStack.Reset();
 
+    GetPlayer1()->ReturnOverdrawnCardsToHand();
+    GetPlayer2()->ReturnOverdrawnCardsToHand();
+
     return CheckGameOver();
 }
 
@@ -792,6 +835,9 @@ std::tuple<PlayState, PlayState> Game::Process(Player* player, ITask&& task)
     Task::Run(std::move(task));
 
     taskStack.Reset();
+
+    GetPlayer1()->ReturnOverdrawnCardsToHand();
+    GetPlayer2()->ReturnOverdrawnCardsToHand();
 
     return CheckGameOver();
 }

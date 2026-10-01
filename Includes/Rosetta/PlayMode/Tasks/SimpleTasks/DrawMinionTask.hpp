@@ -17,6 +17,7 @@ enum class DrawMinionType
     LOWEST_COST,   //!< Lowest cost card.
     HIGHEST_COST,  //!< Highest cost card.
     DEATHRATTLE,   //!< Has Deathrattle.
+    MIN_COST_AT_LEAST, //!< Current cost is at least the supplied threshold.
 };
 
 //!
@@ -38,7 +39,7 @@ class DrawMinionTask : public ITask
     //! \param amount The amount to draw minion card(s).
     //! \param addToStack A flag to store card to stack.
     explicit DrawMinionTask(DrawMinionType drawMinionType, int amount,
-                            bool addToStack);
+                            bool addToStack, int minCost = 0);
 
  private:
     //! Processes task logic internally and returns meta data.
@@ -51,6 +52,7 @@ class DrawMinionTask : public ITask
     std::unique_ptr<ITask> CloneImpl() override;
 
     int m_amount = 0;
+    int m_minCost = 0;
     DrawMinionType m_drawMinionType = DrawMinionType::DEFAULT;
     bool m_addToStack = false;
 };

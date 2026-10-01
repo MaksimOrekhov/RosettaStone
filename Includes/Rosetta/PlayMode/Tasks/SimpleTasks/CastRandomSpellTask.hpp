@@ -17,6 +17,13 @@ namespace RosettaStone::PlayMode::SimpleTasks
 //!
 class CastRandomSpellTask : public ITask
 {
+ public:
+    //! Optionally casts spells of one school up to a mana budget. When
+    //! randomEnemyTargets is set, targeted spells must have an enemy target.
+    explicit CastRandomSpellTask(SpellSchool spellSchool = SpellSchool::NONE,
+                                 int manaBudget = 0,
+                                 bool randomEnemyTargets = false);
+
  private:
     //! Processes task logic internally and returns meta data.
     //! \param player The player to run task.
@@ -26,6 +33,10 @@ class CastRandomSpellTask : public ITask
     //! Internal method of Clone().
     //! \return The cloned task.
     std::unique_ptr<ITask> CloneImpl() override;
+
+    SpellSchool m_spellSchool = SpellSchool::NONE;
+    int m_manaBudget = 0;
+    bool m_randomEnemyTargets = false;
 };
 }  // namespace RosettaStone::PlayMode::SimpleTasks
 

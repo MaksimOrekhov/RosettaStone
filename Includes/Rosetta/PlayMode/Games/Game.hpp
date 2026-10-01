@@ -17,6 +17,7 @@
 #include <Rosetta/PlayMode/Tasks/TaskStack.hpp>
 
 #include <map>
+#include <vector>
 
 namespace RosettaStone::PlayMode
 {
@@ -39,7 +40,7 @@ class Game
     explicit Game(const GameConfig& gameConfig);
 
     //! Default destructor.
-    ~Game() = default;
+    ~Game();
 
     //! Deleted copy constructor.
     Game(const Game&) = delete;
@@ -224,6 +225,10 @@ class Game
     PlayerType m_currentPlayer = PlayerType::INVALID;
 
     std::vector<std::unique_ptr<IAura>> m_ownedAuras;
+
+ public:
+    // Keep newly added state last to preserve existing field offsets.
+    std::vector<int> temporaryCardEntityIDs;
 };
 }  // namespace RosettaStone::PlayMode
 

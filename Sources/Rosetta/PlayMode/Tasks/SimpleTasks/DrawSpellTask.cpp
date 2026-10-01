@@ -40,10 +40,11 @@ DrawSpellTask::DrawSpellTask(DrawSpellType drawSpellType, int amount,
 
 DrawSpellTask::DrawSpellTask(SpellSchool spellSchool,
                              DrawSpellType drawSpellType, int amount,
-                             bool addToStack)
+                             bool addToStack, int minCost)
     : m_spellSchool(spellSchool),
       m_drawSpellType(drawSpellType),
       m_amount(amount),
+      m_minCost(minCost),
       m_addToStack(addToStack)
 {
     // Do nothing
@@ -69,6 +70,13 @@ TaskStatus DrawSpellTask::Impl(Player* player)
         });
     }
 
+    if (m_drawSpellType == DrawSpellType::MIN_COST_AT_LEAST)
+    {
+        EraseIf(deckCards, [this](const Playable* playable) {
+            return playable->GetCost() < m_minCost;
+        });
+    }
+
     if (deckCards.empty())
     {
         return TaskStatus::STOP;
@@ -85,9 +93,13 @@ TaskStatus DrawSpellTask::Impl(Player* player)
                                   return card1->GetCost() > card2->GetCost();
                               });
             break;
+        case DrawSpellType::MIN_COST_AT_LEAST:
+            std::ranges::shuffle(deckCards, Random::get_engine());
+            break;
     }
 
-    for (int i = 0; i < m_amount; ++i)
+    const auto drawCount = std::min(m_amount, static_cast<int>(deckCards.size()));
+    for (int i = 0; i < drawCount; ++i)
     {
         if (m_addToStack)
         {
@@ -103,6 +115,6 @@ TaskStatus DrawSpellTask::Impl(Player* player)
 std::unique_ptr<ITask> DrawSpellTask::CloneImpl()
 {
     return std::make_unique<DrawSpellTask>(m_spellSchool, m_drawSpellType,
-                                           m_amount, m_addToStack);
+                                           m_amount, m_addToStack, m_minCost);
 }
 }  // namespace RosettaStone::PlayMode::SimpleTasks

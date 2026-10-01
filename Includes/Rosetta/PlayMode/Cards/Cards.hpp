@@ -10,6 +10,7 @@
 #include <Rosetta/Common/Constants.hpp>
 #include <Rosetta/PlayMode/Cards/Card.hpp>
 
+#include <unordered_map>
 #include <vector>
 
 namespace RosettaStone::PlayMode
@@ -188,6 +189,7 @@ class Cards
     ~Cards();
 
     static std::vector<Card*> m_cards;
+    static std::unordered_map<std::string, Card*> m_cardsById;
     static std::array<std::vector<Card*>, NUM_PLAYER_CLASS> m_standardCards;
     static std::array<std::vector<Card*>, NUM_PLAYER_CLASS> m_wildCards;
     static std::vector<Card*> m_allStandardCards;

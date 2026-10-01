@@ -28,6 +28,8 @@ class TriggerManager
     //! \param sender An entity that is the source of trigger.
     void OnStartTurnTrigger(Entity* sender);
 
+    //! Callback after mana is refreshed at the start of a player's turn.
+
     //! Callback for trigger when player's turn is ended.
     //! \param sender An entity that is the source of trigger.
     void OnEndTurnTrigger(Entity* sender);

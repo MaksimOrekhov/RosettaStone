@@ -16,6 +16,7 @@ enum class DrawSpellType
 {
     DEFAULT,       //!< Don't care.
     HIGHEST_COST,  //!< Highest cost card.
+    MIN_COST_AT_LEAST, //!< Current cost is at least the supplied threshold.
 };
 
 //!
@@ -52,7 +53,7 @@ class DrawSpellTask : public ITask
     //! \param amount The amount to draw minion card(s).
     //! \param addToStack A flag to store card to stack.
     explicit DrawSpellTask(SpellSchool spellSchool, DrawSpellType drawSpellType,
-                           int amount, bool addToStack);
+                           int amount, bool addToStack, int minCost = 0);
 
  private:
     //! Processes task logic internally and returns meta data.
@@ -67,6 +68,7 @@ class DrawSpellTask : public ITask
     SpellSchool m_spellSchool = SpellSchool::NONE;
     DrawSpellType m_drawSpellType = DrawSpellType::DEFAULT;
     int m_amount = 0;
+    int m_minCost = 0;
     bool m_addToStack = false;
 };
 }  // namespace RosettaStone::PlayMode::SimpleTasks

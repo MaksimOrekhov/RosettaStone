@@ -34,6 +34,7 @@
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/CustomTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageNumberTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DarkGiftDiscoverTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageWeaponTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroyAllTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroyDeckCardTask.hpp>

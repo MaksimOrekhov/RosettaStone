@@ -11,6 +11,8 @@
 
 #include <effolkronium/random.hpp>
 
+#include <algorithm>
+
 using Random = effolkronium::random_static;
 
 namespace RosettaStone::PlayMode::SimpleTasks
@@ -22,8 +24,9 @@ DrawMinionTask::DrawMinionTask(int amount, bool addToStack)
 }
 
 DrawMinionTask::DrawMinionTask(DrawMinionType drawMinionType, int amount,
-                               bool addToStack)
+                               bool addToStack, int minCost)
     : m_amount(amount),
+      m_minCost(minCost),
       m_drawMinionType(drawMinionType),
       m_addToStack(addToStack)
 {
@@ -42,6 +45,13 @@ TaskStatus DrawMinionTask::Impl(Player* player)
     EraseIf(deckCards, [](const Playable* playable) {
         return playable->card->GetCardType() != CardType::MINION;
     });
+
+    if (m_drawMinionType == DrawMinionType::MIN_COST_AT_LEAST)
+    {
+        EraseIf(deckCards, [this](const Playable* playable) {
+            return playable->GetCost() < m_minCost;
+        });
+    }
 
     if (deckCards.empty())
     {
@@ -71,9 +81,18 @@ TaskStatus DrawMinionTask::Impl(Player* player)
                 return !playable->HasDeathrattle();
             });
             break;
+        case DrawMinionType::MIN_COST_AT_LEAST:
+            std::shuffle(deckCards.begin(), deckCards.end(), Random::get_engine());
+            break;
     }
 
-    for (int i = 0; i < m_amount; ++i)
+    if (deckCards.empty())
+    {
+        return TaskStatus::STOP;
+    }
+
+    const auto drawCount = std::min(m_amount, static_cast<int>(deckCards.size()));
+    for (int i = 0; i < drawCount; ++i)
     {
         if (m_addToStack)
         {
@@ -89,6 +108,6 @@ TaskStatus DrawMinionTask::Impl(Player* player)
 std::unique_ptr<ITask> DrawMinionTask::CloneImpl()
 {
     return std::make_unique<DrawMinionTask>(m_drawMinionType, m_amount,
-                                            m_addToStack);
+                                            m_addToStack, m_minCost);
 }
 }  // namespace RosettaStone::PlayMode::SimpleTasks

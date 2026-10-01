@@ -71,7 +71,11 @@ bool Spell::IsCountered() const
 
 bool Spell::TargetingRequirements(Card* _card, Character* target) const
 {
-    return !target->GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS) &&
+    const bool fireSpell = _card != nullptr &&
+                           _card->GetSpellSchool() == SpellSchool::FIRE;
+    return !(fireSpell && target->GetGameTag(
+                               GameTag::MANAMIND_IMMUNE_TO_FIRE_SPELLS)) &&
+           !target->GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS) &&
            Playable::TargetingRequirements(_card, target);
 }
 

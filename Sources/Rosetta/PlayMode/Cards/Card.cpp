@@ -219,7 +219,13 @@ CardSet Card::GetCardSet() const
 
 CardType Card::GetCardType() const
 {
-    return static_cast<CardType>(gameTags.at(GameTag::CARDTYPE));
+    const auto cardType = gameTags.find(GameTag::CARDTYPE);
+    if (cardType == gameTags.end())
+    {
+        return CardType::INVALID;
+    }
+
+    return static_cast<CardType>(cardType->second);
 }
 
 Faction Card::GetFaction() const
@@ -229,7 +235,13 @@ Faction Card::GetFaction() const
 
 Race Card::GetRace() const
 {
-    return static_cast<Race>(gameTags.at(GameTag::CARDRACE));
+    const auto race = gameTags.find(GameTag::CARDRACE);
+    if (race == gameTags.end())
+    {
+        return Race::INVALID;
+    }
+
+    return static_cast<Race>(race->second);
 }
 
 SpellSchool Card::GetSpellSchool() const
@@ -450,6 +462,14 @@ bool Card::IsCollectible() const
 
 bool Card::IsStandardSet() const
 {
+    // M.O.T.H.E.R. is a one-card early-access exception from the unreleased
+    // Reign of the Black Empire set. Keep the rest of set BE out of Standard.
+    if (id == "BE_036")
+    {
+        return true;
+    }
+
+    // Standard membership follows the configured current format pool.
     for (auto& cardSet : STANDARD_CARD_SETS)
     {
         if (GetCardSet() == cardSet)

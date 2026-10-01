@@ -4,6 +4,7 @@
 // Copyright (c) 2017-2024 Chris Ohk
 
 #include <Rosetta/PlayMode/Actions/Draw.hpp>
+#include <Rosetta/PlayMode/Actions/Generic.hpp>
 #include <Rosetta/PlayMode/Models/Player.hpp>
 #include <Rosetta/PlayMode/Tasks/PlayerTasks/TradeCardTask.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
@@ -26,6 +27,7 @@ TaskStatus TradeCardTask::Impl(Player* player)
     if (const auto tradeCard = dynamic_cast<Playable*>(m_source))
     {
         player->SetUsedMana(player->GetUsedMana() + 1);
+        Generic::TrackManaSpentWhileHeld(player, 1, tradeCard);
 
         Playable* topCard = player->GetDeckZone()->GetTopCard();
 

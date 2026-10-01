@@ -5,7 +5,9 @@
 // property of any third parties.
 
 #include <Rosetta/Common/Utils.hpp>
+#include <Rosetta/PlayMode/Actions/Generic.hpp>
 #include <Rosetta/PlayMode/Cards/Cards.hpp>
+#include <Rosetta/PlayMode/Enchants/Effects.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Models/HeroPower.hpp>
 #include <Rosetta/PlayMode/Models/Player.hpp>
@@ -15,6 +17,10 @@
 #include <Rosetta/PlayMode/Zones/HandZone.hpp>
 #include <Rosetta/PlayMode/Zones/SecretZone.hpp>
 #include <Rosetta/PlayMode/Zones/SetasideZone.hpp>
+
+#include <effolkronium/random.hpp>
+
+#include <algorithm>
 
 namespace RosettaStone::PlayMode
 {
@@ -77,6 +83,61 @@ SecretZone* Player::GetSecretZone() const
 SetasideZone* Player::GetSetasideZone() const
 {
     return m_setasideZone.get();
+}
+
+bool Player::HasGodfrey() const
+{
+    return m_godfreyActive;
+}
+
+void Player::SetGodfreyActive(bool active)
+{
+    m_godfreyActive = active;
+}
+
+void Player::AddOverdrawnCard(Playable* card)
+{
+    m_setasideZone->Add(card);
+    m_overdrawnCards.emplace_back(card);
+}
+
+void Player::ReturnOverdrawnCardsToHand()
+{
+    if (!m_godfreyActive || m_returningOverdrawnCards || choice ||
+        m_overdrawnCards.empty())
+    {
+        return;
+    }
+
+    using Random = effolkronium::random_static;
+    m_returningOverdrawnCards = true;
+
+    try
+    {
+        while (!m_overdrawnCards.empty() && !m_handZone->IsFull() && !choice)
+        {
+            const std::size_t index =
+                Random::get<std::size_t>(0, m_overdrawnCards.size() - 1);
+            Playable* card = m_overdrawnCards[index];
+            m_overdrawnCards.erase(m_overdrawnCards.begin() + index);
+            m_setasideZone->Remove(card);
+
+            Effects::AddCost(-1)->ApplyTo(card);
+            Generic::AddCardToHand(this, card);
+        }
+    }
+    catch (...)
+    {
+        m_returningOverdrawnCards = false;
+        throw;
+    }
+
+    m_returningOverdrawnCards = false;
+}
+
+std::size_t Player::GetOverdrawnCardCount() const
+{
+    return m_overdrawnCards.size();
 }
 
 Hero* Player::GetHero() const
@@ -388,6 +449,46 @@ void Player::SetNumElementalPlayedLastTurn(int value)
     SetGameTag(GameTag::NUM_ELEMENTAL_PLAYED_LAST_TURN, value);
 }
 
+int Player::GetNumDragonMinionsPlayedThisTurn() const
+{
+    return m_numDragonMinionsPlayedThisTurn;
+}
+
+void Player::SetNumDragonMinionsPlayedThisTurn(int value)
+{
+    m_numDragonMinionsPlayedThisTurn = value;
+}
+
+int Player::GetNumDragonMinionsPlayedLastTurn() const
+{
+    return m_numDragonMinionsPlayedLastTurn;
+}
+
+void Player::SetNumDragonMinionsPlayedLastTurn(int value)
+{
+    m_numDragonMinionsPlayedLastTurn = value;
+}
+
+int Player::GetNumHolySpellsCastThisTurn() const
+{
+    return m_numHolySpellsCastThisTurn;
+}
+
+void Player::SetNumHolySpellsCastThisTurn(int value)
+{
+    m_numHolySpellsCastThisTurn = value;
+}
+
+int Player::GetNumHolySpellsCastLastTurn() const
+{
+    return m_numHolySpellsCastLastTurn;
+}
+
+void Player::SetNumHolySpellsCastLastTurn(int value)
+{
+    m_numHolySpellsCastLastTurn = value;
+}
+
 int Player::GetNumWatchPostSummonedThisGame() const
 {
     return GetGameTag(GameTag::NUM_WATCH_POSTS_SUMMONED_THIS_GAME);
@@ -406,6 +507,16 @@ int Player::GetNumSpellsCastThisTurn() const
 void Player::SetNumSpellsCastThisTurn(int value)
 {
     SetGameTag(GameTag::NUM_SPELLS_CAST_THIS_TURN, value);
+}
+
+int Player::GetNumFireSpellsCastThisTurn() const
+{
+    return m_numFireSpellsCastThisTurn;
+}
+
+void Player::SetNumFireSpellsCastThisTurn(int value)
+{
+    m_numFireSpellsCastThisTurn = value;
 }
 
 int Player::GetNumSpellsCastLastTurn() const
@@ -458,6 +569,43 @@ void Player::IncreaseNumCardsPlayedThisGameNotStartInDeck()
 {
     const int val = GetNumCardsPlayedThisGameNotStartInDeck();
     SetGameTag(GameTag::NUM_CARDS_PLAYED_THIS_GAME_NOT_START_IN_DECK, val + 1);
+}
+
+int Player::GetNumHeroAttacksThisGame() const
+{
+    return m_numHeroAttacksThisGame;
+}
+
+void Player::IncreaseNumHeroAttacksThisGame()
+{
+    ++m_numHeroAttacksThisGame;
+}
+
+int Player::RegisterDamagedFriendlyCharacter(int turnNumber, int entityID)
+{
+    if (m_damageTrackingTurn != turnNumber)
+    {
+        m_damageTrackingTurn = turnNumber;
+        m_numDamagedFriendlyCharactersThisTurn = 0;
+    }
+
+    for (int i = 0; i < m_numDamagedFriendlyCharactersThisTurn; ++i)
+    {
+        if (m_damagedFriendlyCharactersThisTurn[static_cast<std::size_t>(i)] ==
+            entityID)
+        {
+            return m_numDamagedFriendlyCharactersThisTurn;
+        }
+    }
+
+    if (m_numDamagedFriendlyCharactersThisTurn <
+        static_cast<int>(m_damagedFriendlyCharactersThisTurn.size()))
+    {
+        m_damagedFriendlyCharactersThisTurn[static_cast<std::size_t>(
+            m_numDamagedFriendlyCharactersThisTurn++)] = entityID;
+    }
+
+    return m_numDamagedFriendlyCharactersThisTurn;
 }
 
 void Player::UpgradeGalakrond() const

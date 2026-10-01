@@ -312,7 +312,11 @@ int Character::TakeDamage(Playable* source, int damage)
         return 0;
     }
 
-    if (IsImmune())
+    const auto fireSpell = dynamic_cast<Spell*>(source);
+    const bool immuneToFireSpell =
+        fireSpell != nullptr && fireSpell->GetSpellSchool() == SpellSchool::FIRE &&
+        GetGameTag(GameTag::MANAMIND_IMMUNE_TO_FIRE_SPELLS) == 1;
+    if (IsImmune() || immuneToFireSpell)
     {
         game->taskQueue.EndEvent();
 

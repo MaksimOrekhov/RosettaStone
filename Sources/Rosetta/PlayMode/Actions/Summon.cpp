@@ -5,6 +5,8 @@
 
 #include <Rosetta/PlayMode/Actions/Summon.hpp>
 #include <Rosetta/PlayMode/Cards/Cards.hpp>
+#include <Rosetta/PlayMode/Models/DarkGift.hpp>
+#include <Rosetta/PlayMode/Models/Enchantment.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/SummonTask.hpp>
 #include <Rosetta/PlayMode/Zones/FieldZone.hpp>
@@ -57,6 +59,10 @@ void Summon(Minion* minion, int fieldPos, Entity* summoner)
 
 void SummonReborn(Minion* minion)
 {
+    // Persist on the original minion while it remains in the graveyard. The
+    // temporary Reborn copy must not inherit this history marker.
+    minion->SetGameTag(GameTag::MANAMIND_REBORN_THIS_GAME, 1);
+
     int alternateCount = 0;
     int zonePos = SummonTask::GetPosition(minion, SummonSide::DEATHRATTLE,
                                           nullptr, alternateCount);
@@ -69,10 +75,44 @@ void SummonReborn(Minion* minion)
         Entity::GetFromCard(minion->player, minion->card, minion->GetGameTags(),
                             minion->player->GetFieldZone()));
 
-    // When the minion is first destroyed, it loses the visual effect but
-    // retains the keyword. The keyword is then functionally meaningless.
-    copy->SetDamage(copy->GetHealth() - 1);
+    const bool darkGiftReborn =
+        minion->GetGameTag(GameTag::MANAMIND_DARK_GIFT_ID) ==
+        static_cast<int>(DarkGift::REBORN_FULL_HEALTH);
+    if (darkGiftReborn)
+    {
+        minion->CopyInternalAttributes(copy);
+        copy->SetDamage(0);
+        for (const auto& enchantment : minion->appliedEnchantments)
+        {
+            auto instance =
+                Enchantment::GetInstance(minion, enchantment->card, copy);
+            for (const auto tag : { GameTag::TAG_SCRIPT_DATA_NUM_1,
+                                    GameTag::TAG_SCRIPT_DATA_NUM_2 })
+            {
+                const int value = enchantment->GetGameTag(tag);
+                if (value > 0)
+                {
+                    instance->SetGameTag(tag, value);
+                }
+            }
+            if (enchantment->IsOneTurnActive())
+            {
+                instance->game->oneTurnEffectEnchantments.emplace_back(
+                    instance);
+            }
+        }
+        if (minion->ongoingEffect && !copy->ongoingEffect)
+        {
+            minion->ongoingEffect->Clone(copy);
+        }
+    }
+    else
+    {
+        // Ordinary Reborn returns with one Health.
+        copy->SetDamage(copy->GetHealth() - 1);
+    }
     copy->SetGameTag(GameTag::REBORN, 0);
+    copy->SetGameTag(GameTag::MANAMIND_REBORN_THIS_GAME, 0);
 
     Summon(copy, zonePos, minion);
 }

@@ -10,6 +10,8 @@
 
 #include <effolkronium/random.hpp>
 
+#include <algorithm>
+
 using Random = effolkronium::random_static;
 
 namespace RosettaStone::PlayMode::SimpleTasks
@@ -50,9 +52,11 @@ TaskStatus DrawWeaponTask::Impl(Player* player)
         return TaskStatus::STOP;
     }
 
-    if (static_cast<int>(cards.size()) <= m_amount)
+    const auto drawCount = std::min(m_amount, static_cast<int>(cards.size()));
+
+    if (static_cast<int>(cards.size()) <= drawCount)
     {
-        for (int i = 0; i < m_amount; ++i)
+        for (int i = 0; i < drawCount; ++i)
         {
             if (m_addToStack)
             {
@@ -64,7 +68,7 @@ TaskStatus DrawWeaponTask::Impl(Player* player)
     }
     else
     {
-        for (int i = 0; i < m_amount; ++i)
+        for (int i = 0; i < drawCount; ++i)
         {
             const auto pick = Random::get<std::size_t>(0, cards.size() - 1);
 

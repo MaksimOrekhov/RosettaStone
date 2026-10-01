@@ -70,6 +70,7 @@
 #include <Rosetta/PlayMode/Actions/Copy.hpp>
 #include <Rosetta/PlayMode/Actions/Draw.hpp>
 #include <Rosetta/PlayMode/Actions/Generic.hpp>
+#include <Rosetta/PlayMode/Actions/Kazakus.hpp>
 #include <Rosetta/PlayMode/Actions/PlayCard.hpp>
 #include <Rosetta/PlayMode/Actions/Summon.hpp>
 #include <Rosetta/PlayMode/Agents/IAgent.hpp>
@@ -101,6 +102,15 @@
 #include <Rosetta/PlayMode/CardSets/LegacyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LoECardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LootapaloozaCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindAfterAttackDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindCoreAliasCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindDarkGiftCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindDragonPoolCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindEffectCompositionGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindFilteredSchoolDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindKeywordOnlyCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindMetadataOnlyCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindRepeatedTriggerDrawGen.hpp>
 #include <Rosetta/PlayMode/CardSets/NaxxCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/OgCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/Placeholder202204CardsGen.hpp>
@@ -157,6 +167,7 @@
 #include <Rosetta/PlayMode/Managers/TriggerManager.hpp>
 #include <Rosetta/PlayMode/Models/Character.hpp>
 #include <Rosetta/PlayMode/Models/Choice.hpp>
+#include <Rosetta/PlayMode/Models/DarkGift.hpp>
 #include <Rosetta/PlayMode/Models/Enchantment.hpp>
 #include <Rosetta/PlayMode/Models/Entity.hpp>
 #include <Rosetta/PlayMode/Models/Hero.hpp>
@@ -209,6 +220,7 @@
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageNumberTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DamageWeaponTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/DarkGiftDiscoverTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroyAllTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroyDeckCardTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/DestroySoulFragmentTask.hpp>

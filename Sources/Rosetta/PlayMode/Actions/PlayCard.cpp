@@ -10,6 +10,9 @@
 #include <Rosetta/PlayMode/Actions/Summon.hpp>
 #include <Rosetta/PlayMode/Cards/Cards.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
+#include <Rosetta/PlayMode/Models/DarkGift.hpp>
+#include <Rosetta/PlayMode/Models/Entity.hpp>
+#include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
 #include <Rosetta/PlayMode/Zones/FieldZone.hpp>
 #include <Rosetta/PlayMode/Zones/GraveyardZone.hpp>
@@ -78,11 +81,20 @@ void PlayCard(Player* player, Playable* source, Character* target, int fieldPos,
         player->SetTemporaryMana(player->GetTemporaryMana() - tempUsed);
         player->SetUsedMana(player->GetUsedMana() + source->GetCost() -
                             tempUsed);
+        TrackManaSpentWhileHeld(player, cost, source);
     }
 
     // Process keyword 'Corrupt'
     for (const auto& playable : player->GetHandZone()->GetAll())
     {
+        // Shaladrassil does not transform itself: a higher-cost card played
+        // while it is in hand changes the five Dream cards it will generate.
+        if (playable->card != nullptr && playable->card->id == "EDR_846" &&
+            source->GetCost() > playable->GetCost())
+        {
+            playable->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1, 1);
+        }
+
         if (playable->HasCorrupt() && source->GetCost() > playable->GetCost())
         {
             Card* newCard = Cards::FindCardByDbfID(
@@ -102,6 +114,19 @@ void PlayCard(Player* player, Playable* source, Character* target, int fieldPos,
     player->SetNumCardsPlayedThisTurn(val + 1);
     player->playHistory.emplace_back(
         PlayHistory(source, target, player->game->GetTurn(), chooseOne));
+
+    if (source->card->GetCardType() == CardType::MINION &&
+        source->card->GetRace() == Race::DRAGON)
+    {
+        player->SetNumDragonMinionsPlayedThisTurn(
+            player->GetNumDragonMinionsPlayedThisTurn() + 1);
+    }
+    if (source->card->GetCardType() == CardType::SPELL &&
+        source->card->GetSpellSchool() == SpellSchool::HOLY)
+    {
+        player->SetNumHolySpellsCastThisTurn(
+            player->GetNumHolySpellsCastThisTurn() + 1);
+    }
 
     // Record played cards for effect of cards
     // (i.e. Obsidian Shard and Lynessa Sunsorrow)
@@ -378,8 +403,11 @@ void PlayMinion(Player* player, Minion* minion, Character* target, int fieldPos,
         minion->ActivateTask(PowerType::POWER, target, chooseOne);
     }
 
-    // If player has extra battlecry, activate power task again
-    if (player->ExtraBattlecry() && minion->HasBattlecry())
+    // Extra Battlecry effects and the Dark Gift share the second activation.
+    if (minion->HasBattlecry() &&
+        (player->ExtraBattlecry() ||
+         minion->GetGameTag(GameTag::MANAMIND_DARK_GIFT_ID) ==
+             static_cast<int>(DarkGift::DOUBLE_BATTLECRY)))
     {
         minion->ActivateTask(PowerType::POWER, target, chooseOne);
     }
@@ -412,6 +440,20 @@ void PlayMinion(Player* player, Minion* minion, Character* target, int fieldPos,
     player->game->ProcessTasks();
     player->game->taskQueue.EndEvent();
 
+    if (minion->GetGameTag(GameTag::MANAMIND_DARK_GIFT_ID) ==
+            static_cast<int>(DarkGift::SUMMON_COPY) &&
+        !player->GetFieldZone()->IsFull())
+    {
+        auto* copy = dynamic_cast<Minion*>(Entity::GetFromCard(
+            player, minion->card, minion->GetGameTags(),
+            player->GetFieldZone()));
+        copy->SetAttack(2);
+        copy->SetBaseHealth(2);
+        copy->SetDamage(0);
+        copy->SetGameTag(GameTag::MANAMIND_DARK_GIFT_ID, 0);
+        Generic::Summon(copy, -1, minion);
+    }
+
     // Process after summon trigger
     player->game->taskQueue.StartEvent();
     player->game->triggerManager.OnAfterSummonTrigger(minion);
@@ -426,6 +468,12 @@ void PlaySpell(Player* player, Spell* spell, Character* target, int chooseOne)
     // Increase the number of spells that casted this turn
     const int val = player->GetNumSpellsCastThisTurn();
     player->SetNumSpellsCastThisTurn(val + 1);
+    if (spell->GetSpellSchool() == SpellSchool::FIRE &&
+        (spell->card == nullptr || spell->card->id != "CATA_582"))
+    {
+        player->SetNumFireSpellsCastThisTurn(
+            player->GetNumFireSpellsCastThisTurn() + 1);
+    }
 
     // Increase the number of spells that played this turn
     player->IncreaseNumSpellsPlayedThisGame();

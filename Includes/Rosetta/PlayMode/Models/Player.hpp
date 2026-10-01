@@ -16,6 +16,8 @@
 
 #include <memory>
 #include <string>
+#include <array>
+#include <vector>
 
 namespace RosettaStone::PlayMode
 {
@@ -78,6 +80,21 @@ class Player : public Entity
     //! Returns player's setaside zone.
     //! \return Player's setaside zone.
     SetasideZone* GetSetasideZone() const;
+
+    //! Returns whether Godfrey the Betrayer's start-of-game effect is active.
+    bool HasGodfrey() const;
+
+    //! Enables or disables Godfrey the Betrayer's start-of-game effect.
+    void SetGodfreyActive(bool active);
+
+    //! Stores a card that was overdrawn while Godfrey is active.
+    void AddOverdrawnCard(Playable* card);
+
+    //! Returns deferred overdrawn cards to hand while there is room.
+    void ReturnOverdrawnCardsToHand();
+
+    //! Returns the number of deferred overdrawn cards.
+    std::size_t GetOverdrawnCardCount() const;
 
     //! Returns the hero of the player.
     //! \return The hero of the player.
@@ -267,6 +284,15 @@ class Player : public Entity
     //! \param value The number of elemental minions that played last turn.
     void SetNumElementalPlayedLastTurn(int value);
 
+    int GetNumDragonMinionsPlayedThisTurn() const;
+    void SetNumDragonMinionsPlayedThisTurn(int value);
+    int GetNumDragonMinionsPlayedLastTurn() const;
+    void SetNumDragonMinionsPlayedLastTurn(int value);
+    int GetNumHolySpellsCastThisTurn() const;
+    void SetNumHolySpellsCastThisTurn(int value);
+    int GetNumHolySpellsCastLastTurn() const;
+    void SetNumHolySpellsCastLastTurn(int value);
+
     //! Returns the number of Watch Posts that summoned this game.
     //! \return The number of Watch Posts that summoned this game.
     int GetNumWatchPostSummonedThisGame() const;
@@ -282,6 +308,12 @@ class Player : public Entity
     //! Sets the number of spells that cast this turn.
     //! \param value The number of spells that cast this turn.
     void SetNumSpellsCastThisTurn(int value);
+
+    //! Returns the number of Fire spells cast this turn.
+    int GetNumFireSpellsCastThisTurn() const;
+
+    //! Sets the number of Fire spells cast this turn.
+    void SetNumFireSpellsCastThisTurn(int value);
 
     //! Returns the number of spells that cast last turn.
     //! \return The number of spells that cast last turn.
@@ -324,6 +356,16 @@ class Player : public Entity
     //! didn't start in your deck.
     void IncreaseNumCardsPlayedThisGameNotStartInDeck();
 
+    //! Returns the number of times this player's hero attacked this game.
+    int GetNumHeroAttacksThisGame() const;
+
+    //! Records one successful attack made by this player's hero.
+    void IncreaseNumHeroAttacksThisGame();
+
+    //! Records one friendly character damaged this turn and returns the
+    //! number of distinct friendly characters damaged this turn.
+    int RegisterDamagedFriendlyCharacter(int turnNumber, int entityID);
+
     //! Upgrades the Galakrond hero card.
     void UpgradeGalakrond() const;
 
@@ -357,6 +399,11 @@ class Player : public Entity
 
  private:
     Hero* m_hero = nullptr;
+    int m_numFireSpellsCastThisTurn = 0;
+    int m_numDragonMinionsPlayedThisTurn = 0;
+    int m_numDragonMinionsPlayedLastTurn = 0;
+    int m_numHolySpellsCastThisTurn = 0;
+    int m_numHolySpellsCastLastTurn = 0;
 
     std::unique_ptr<DeckZone> m_deckZone;
     std::unique_ptr<FieldZone> m_fieldZone;
@@ -364,6 +411,13 @@ class Player : public Entity
     std::unique_ptr<HandZone> m_handZone;
     std::unique_ptr<SecretZone> m_secretZone;
     std::unique_ptr<SetasideZone> m_setasideZone;
+    bool m_godfreyActive = false;
+    bool m_returningOverdrawnCards = false;
+    int m_numHeroAttacksThisGame = 0;
+    int m_damageTrackingTurn = -1;
+    std::array<int, 8> m_damagedFriendlyCharactersThisTurn{};
+    int m_numDamagedFriendlyCharactersThisTurn = 0;
+    std::vector<Playable*> m_overdrawnCards;
 };
 }  // namespace RosettaStone::PlayMode
 

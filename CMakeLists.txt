@@ -7,6 +7,15 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Builds/CMake")
 # Declare project
 project(RosettaStone)
 
+# MSVC emits /showIncludes in UTF-8 on this localized Windows host. CMake's
+# automatic prefix probe decodes that output using the active ANSI code page,
+# which leaves Ninja with a mojibake dependency prefix and stale C++ objects.
+# Keep Ninja's MSVC dependency parser aligned with the compiler output.
+if(MSVC AND CMAKE_GENERATOR MATCHES "Ninja" AND
+   CMAKE_CXX_CL_SHOWINCLUDES_PREFIX MATCHES "╨")
+    set(CMAKE_CL_SHOWINCLUDES_PREFIX "Примечание: включение файла:  ")
+endif()
+
 # Set RosettaStone's root directory
 if (NOT ROSETTA_ROOT)
 	set(ROSETTA_ROOT ${PROJECT_SOURCE_DIR})

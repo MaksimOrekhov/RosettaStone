@@ -50,6 +50,41 @@ TEST_CASE("[Trigger] - None")
     game.ProcessDestroyAndUpdateAura();
 }
 
+TEST_CASE("[Trigger] - HandOrDeck activation")
+{
+    GameConfig config;
+    config.player1Class = CardClass::SHAMAN;
+    config.player2Class = CardClass::WARLOCK;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Card card = GenerateMinionCard("minion1", 3, 6);
+    card.power.AddTrigger(std::make_shared<Trigger>(TriggerType::TAKE_DAMAGE));
+    card.power.GetTrigger()->triggerActivation =
+        TriggerActivation::HAND_OR_DECK;
+    Playable* source = Entity::GetFromCard(player, &card, std::nullopt);
+
+    const auto handTrigger =
+        card.power.GetTrigger()->Activate(source, TriggerActivation::HAND);
+    CHECK(handTrigger != nullptr);
+    handTrigger->Remove();
+
+    const auto deckTrigger =
+        card.power.GetTrigger()->Activate(source, TriggerActivation::DECK);
+    CHECK(deckTrigger != nullptr);
+    deckTrigger->Remove();
+
+    const auto playTrigger =
+        card.power.GetTrigger()->Activate(source, TriggerActivation::PLAY);
+    CHECK(playTrigger == nullptr);
+}
+
 TEST_CASE("[Trigger] - TurnStart")
 {
     GameConfig config;

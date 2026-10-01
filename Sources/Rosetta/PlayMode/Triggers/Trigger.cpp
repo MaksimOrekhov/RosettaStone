@@ -7,9 +7,11 @@
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Models/Enchantment.hpp>
 #include <Rosetta/PlayMode/Models/Minion.hpp>
+#include <Rosetta/PlayMode/Models/Player.hpp>
 #include <Rosetta/PlayMode/Models/Spell.hpp>
 #include <Rosetta/PlayMode/Tasks/ITask.hpp>
 #include <Rosetta/PlayMode/Triggers/Trigger.hpp>
+#include <Rosetta/PlayMode/Zones/FieldZone.hpp>
 
 #include <effolkronium/random.hpp>
 
@@ -80,7 +82,15 @@ std::shared_ptr<Trigger> Trigger::Activate(Playable* source,
 {
     if (!cloning && activation != triggerActivation)
     {
-        if (triggerActivation != TriggerActivation::HAND_OR_PLAY)
+        const bool handOrPlay =
+            triggerActivation == TriggerActivation::HAND_OR_PLAY &&
+            (activation == TriggerActivation::HAND ||
+             activation == TriggerActivation::PLAY);
+        const bool handOrDeck =
+            triggerActivation == TriggerActivation::HAND_OR_DECK &&
+            (activation == TriggerActivation::HAND ||
+             activation == TriggerActivation::DECK);
+        if (!handOrPlay && !handOrDeck)
         {
             return nullptr;
         }
@@ -545,7 +555,27 @@ void Trigger::ProcessInternal(Entity* source)
 {
     m_isValidated = false;
 
+    bool doubleForDeios = false;
+    if (m_triggerType == TriggerType::TURN_END && m_owner && m_owner->player)
+    {
+        const auto minions = m_owner->player->GetFieldZone()->GetMinions();
+        doubleForDeios = std::any_of(
+            minions.begin(), minions.end(), [](const Minion* minion) {
+                return minion && minion->card &&
+                       minion->GetGameTag(GameTag::SILENCED) == 0 &&
+                       minion->card->id == "TIME_064";
+            });
+    }
+
     ProcessTasks(source);
+
+    // Chrono-Lord Deios doubles friendly end-of-turn triggers while he is on
+    // the battlefield. This implements the end-of-turn part of the card text;
+    // Battlecries, Deathrattles, and Hero Powers are separate engine paths.
+    if (doubleForDeios)
+    {
+        ProcessTasks(source);
+    }
 
     if (const auto spell = dynamic_cast<Spell*>(m_owner);
         spell && spell->IsSecret() && spell->player->ExtraTriggerSecret())

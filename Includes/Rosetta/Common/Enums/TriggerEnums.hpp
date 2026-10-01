@@ -89,7 +89,8 @@ enum class TriggerActivation
     PLAY,
     HAND,
     DECK,
-    HAND_OR_PLAY
+    HAND_OR_PLAY,
+    HAND_OR_DECK
 };
 
 //! \brief An enumerator for identifying sequence type.

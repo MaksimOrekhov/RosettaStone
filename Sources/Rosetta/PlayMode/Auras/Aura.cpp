@@ -697,6 +697,12 @@ void Aura::RenewAll()
             m_owner->player->GetHandZone()->ForEach(Renew);
             m_owner->player->opponent->GetHandZone()->ForEach(Renew);
             break;
+        case AuraType::HAND:
+            m_owner->player->GetHandZone()->ForEach(Renew);
+            break;
+        case AuraType::ENEMY_HAND:
+            m_owner->player->opponent->GetHandZone()->ForEach(Renew);
+            break;
         case AuraType::WEAPON:
             if (!m_owner->player->GetHero()->HasWeapon())
             {
@@ -711,8 +717,6 @@ void Aura::RenewAll()
         case AuraType::ADJACENT:
         case AuraType::HERO_POWER:
         case AuraType::ENEMY_HERO_POWER:
-        case AuraType::HAND:
-        case AuraType::ENEMY_HAND:
         case AuraType::FIELD_AND_HAND:
         case AuraType::PLAYER:
         case AuraType::ENEMY_PLAYER:

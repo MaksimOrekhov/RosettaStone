@@ -6,6 +6,12 @@
 
 #include <Utils/CardSetHeaders.hpp>
 
+#include <Rosetta/PlayMode/Zones/GraveyardZone.hpp>
+#include <Rosetta/PlayMode/Actions/Summon.hpp>
+#include <Rosetta/PlayMode/Models/Spell.hpp>
+
+#include <algorithm>
+
 // ----------------------------------------- HERO - WARLOCK
 // [CORE_EX1_323] Lord Jaraxxus - COST:9
 // - Set: CORE, Rarity: Legendary
@@ -58,6 +64,70 @@ TEST_CASE("[Warlock : Hero] - CORE_EX1_323 : Lord Jaraxxus")
     CHECK_EQ(curField.GetCount(), 1);
     CHECK_EQ(curField[0]->GetAttack(), 6);
     CHECK_EQ(curField[0]->GetHealth(), 6);
+}
+
+TEST_CASE("[Warrior : Minion] - JAIL_421 : Warptooth from deck and hand")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::WARRIOR;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Card* warptoothCard = Cards::FindCardByID("JAIL_421");
+    REQUIRE(warptoothCard != nullptr);
+    auto* warptooth = dynamic_cast<Minion*>(Entity::GetFromCard(player, warptoothCard));
+    REQUIRE(warptooth != nullptr);
+    player->GetDeckZone()->Add(warptooth);
+
+    Card* testMinionCard = Cards::FindCardByID("CS2_182");
+    REQUIRE(testMinionCard != nullptr);
+    auto& field = *player->GetFieldZone();
+    std::array<Minion*, 3> friendlyMinions{};
+    for (auto& minion : friendlyMinions)
+    {
+        minion = dynamic_cast<Minion*>(Entity::GetFromCard(player, testMinionCard));
+        REQUIRE(minion != nullptr);
+        field.Add(minion);
+    }
+
+    Hero* hero = player->GetHero();
+    for (int i = 0; i < 4; ++i)
+    {
+        hero->TakeDamage(hero, 1);
+    }
+    CHECK_EQ(field.GetMinionCount(), 3);
+    CHECK_EQ(warptooth->GetZoneType(), ZoneType::DECK);
+
+    friendlyMinions[0]->TakeDamage(hero, 1);
+    friendlyMinions[1]->TakeDamage(hero, 1);
+    CHECK_EQ(field.GetMinionCount(), 3);
+    CHECK_EQ(warptooth->GetZoneType(), ZoneType::DECK);
+
+    friendlyMinions[2]->TakeDamage(hero, 1);
+    CHECK_EQ(field.GetMinionCount(), 4);
+    CHECK_EQ(warptooth->GetZoneType(), ZoneType::PLAY);
+    CHECK_EQ(field.GetAll().back(), warptooth);
+
+    auto* handWarptooth =
+        dynamic_cast<Minion*>(Entity::GetFromCard(player, warptoothCard));
+    REQUIRE(handWarptooth != nullptr);
+    player->GetHandZone()->Add(handWarptooth);
+    auto* fourthFriendlyMinion =
+        dynamic_cast<Minion*>(Entity::GetFromCard(player, testMinionCard));
+    REQUIRE(fourthFriendlyMinion != nullptr);
+    field.Add(fourthFriendlyMinion);
+    fourthFriendlyMinion->TakeDamage(hero, 1);
+    CHECK_EQ(field.GetMinionCount(), 6);
+    CHECK_EQ(handWarptooth->GetZoneType(), ZoneType::PLAY);
+    CHECK_EQ(field.GetAll().back(), handWarptooth);
 }
 
 // ------------------------------------------ SPELL - DRUID
@@ -13755,4 +13825,475 @@ TEST_CASE("[Neutral : Minion] - CS3_037 : Emerald Skytalon")
 TEST_CASE("[Neutral : Minion] - CS3_038 : Redgill Razorjaw")
 {
     // Do nothing
+}
+
+// --------------------------------------- MINION - WARLOCK
+// [JAIL_399] Imp Gang Stooge - COST:3 [ATK:2/HP:5]
+// --------------------------------------------------------
+// Text: Taunt. Deathrattle: Put two Grandmother Imps on the bottom of your
+// deck.
+// --------------------------------------------------------
+TEST_CASE("[Warlock : Minion] - JAIL_399 : Imp Gang Stooge")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::WARLOCK;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* warlock = game.GetCurrentPlayer();
+    Player* warrior = game.GetOpponentPlayer();
+    warlock->SetTotalMana(10);
+    warlock->SetUsedMana(0);
+    warrior->SetTotalMana(10);
+    warrior->SetUsedMana(0);
+
+    auto& warlockField = *(warlock->GetFieldZone());
+    auto& warriorField = *(warrior->GetFieldZone());
+    auto& warlockDeck = *(warlock->GetDeckZone());
+
+    const auto stooge =
+        Generic::DrawCard(warlock, Cards::FindCardByID("JAIL_399"));
+    game.Process(warlock, PlayCardTask::Minion(stooge));
+    CHECK_EQ(warlockField.GetCount(), 1);
+    CHECK_EQ(warlockField[0]->GetGameTag(GameTag::TAUNT), 1);
+    const int deckCountBeforeDeath = warlockDeck.GetCount();
+
+    game.Process(warlock, EndTurnTask());
+    game.ProcessUntil(Step::MAIN_ACTION);
+    const auto ogre =
+        Generic::DrawCard(warrior, Cards::FindCardByName("Boulderfist Ogre"));
+    game.Process(warrior, PlayCardTask::Minion(ogre));
+    CHECK_EQ(warriorField.GetCount(), 1);
+
+    game.Process(warrior, EndTurnTask());
+    game.ProcessUntil(Step::MAIN_ACTION);
+    game.Process(warlock, AttackTask(stooge, ogre));
+
+    CHECK_EQ(warlockField.GetCount(), 0);
+    CHECK_EQ(warlockDeck.GetCount(), deckCountBeforeDeath + 2);
+    CHECK_EQ(warlockDeck.GetBottomCard()->card->id, "JAIL_399t1");
+    CHECK_EQ(warlockDeck.GetNthBottomCard(2)->card->id, "JAIL_399t1");
+    CHECK_EQ(warlockDeck.GetBottomCard()->card->gameTags.at(GameTag::ATK), 8);
+    CHECK_EQ(warlockDeck.GetBottomCard()->card->gameTags.at(GameTag::HEALTH),
+             8);
+    CHECK_EQ(warlockDeck.GetBottomCard()->card->GetRace(), Race::DEMON);
+    CHECK_EQ(warlockDeck.GetBottomCard()->GetGameTag(GameTag::TAUNT), 1);
+    CHECK_EQ(warlockDeck.GetBottomCard()->GetGameTag(GameTag::LIFESTEAL), 1);
+}
+
+// --------------------------------------- MINION - WARLOCK
+// [JAIL_509] Godfrey the Betrayer - COST:4 [ATK:5/HP:4]
+// --------------------------------------------------------
+// Text: Start of Game: Overdrawn cards return to hand when there is space.
+//       They cost (1) less.
+// --------------------------------------------------------
+TEST_CASE("[Warlock : Minion] - JAIL_509 : Godfrey the Betrayer")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::WARLOCK;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = false;
+    config.autoRun = false;
+
+    for (auto& card : config.player1Deck)
+    {
+        card = Cards::FindCardByID("CS2_231");  // Wisp
+    }
+    config.player1Deck[0] = Cards::FindCardByID("JAIL_509");
+    config.player1Deck[3] = Cards::FindCardByID("Core_CS2_200");
+    config.player1Deck[4] = Cards::FindCardByID("Core_CS2_200");
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* warlock = game.GetPlayer1();
+    Player* warrior = game.GetPlayer2();
+    CHECK(warlock->HasGodfrey());
+    CHECK_FALSE(warrior->HasGodfrey());
+
+    for (int i = 0; i < 7; ++i)
+    {
+        Generic::DrawCard(warlock, Cards::FindCardByID("CS2_231"));
+    }
+    CHECK_EQ(warlock->GetHandZone()->GetCount(), 10);
+
+    Generic::Draw(warlock);
+    Generic::Draw(warlock);
+    CHECK_EQ(warlock->GetOverdrawnCardCount(), 2);
+    CHECK_EQ(warlock->GetHandZone()->GetCount(), 10);
+
+    warlock->SetTotalMana(10);
+    warlock->SetUsedMana(0);
+    auto& hand = *(warlock->GetHandZone());
+    auto findCard = [&hand](const std::string& id) {
+        const auto cards = hand.GetAll();
+        const auto it = std::find_if(
+            cards.begin(), cards.end(),
+            [&id](Playable* card) { return card->card->id == id; });
+        return it == cards.end() ? static_cast<Playable*>(nullptr) : *it;
+    };
+
+    Playable* wisp = findCard("CS2_231");
+    REQUIRE(wisp != nullptr);
+    game.Process(warlock, PlayCardTask::Minion(wisp));
+    CHECK_EQ(hand.GetCount(), 10);
+    CHECK_EQ(warlock->GetOverdrawnCardCount(), 1);
+    Playable* returnedOgre = findCard("Core_CS2_200");
+    REQUIRE(returnedOgre != nullptr);
+    CHECK_EQ(returnedOgre->GetCost(), 5);
+
+    wisp = findCard("CS2_231");
+    REQUIRE(wisp != nullptr);
+    game.Process(warlock, PlayCardTask::Minion(wisp));
+    CHECK_EQ(hand.GetCount(), 10);
+    CHECK_EQ(warlock->GetOverdrawnCardCount(), 0);
+    const auto finalCards = hand.GetAll();
+    CHECK_EQ(std::count_if(finalCards.begin(), finalCards.end(),
+                           [](Playable* card) {
+                               return card->card->id == "Core_CS2_200" &&
+                                      card->GetCost() == 5;
+                           }),
+             2);
+}
+
+TEST_CASE("[Druid : Spell] - EDR_846 : Shaladrassil generates the correct Dreams")
+{
+    const auto run = [](bool corrupt) {
+        GameConfig config;
+        config.formatType = FormatType::STANDARD;
+        config.player1Class = CardClass::DRUID;
+        config.player2Class = CardClass::WARRIOR;
+        config.startPlayer = PlayerType::PLAYER1;
+        config.doFillDecks = true;
+        config.autoRun = false;
+
+        Game game(config);
+        game.Start();
+        game.ProcessUntil(Step::MAIN_ACTION);
+
+        Player* player = game.GetCurrentPlayer();
+        player->SetTotalMana(10);
+        player->SetUsedMana(0);
+        auto& hand = *player->GetHandZone();
+        for (Playable* card : hand.GetAll())
+        {
+            hand.Remove(card);
+        }
+
+        Playable* shaladrassil = Generic::DrawCard(
+            player, Cards::FindCardByID("EDR_846"));
+        REQUIRE(shaladrassil != nullptr);
+
+        if (corrupt)
+        {
+            Playable* higherCost = Generic::DrawCard(
+                player, Cards::FindCardByID("CS3_033"));
+            REQUIRE(higherCost != nullptr);
+            game.Process(player, PlayCardTask::Minion(higherCost));
+            CHECK_EQ(shaladrassil->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1), 1);
+            player->SetUsedMana(0);
+        }
+        else
+        {
+            Playable* lowerCost = Generic::DrawCard(
+                player, Cards::FindCardByID("CS2_231"));
+            REQUIRE(lowerCost != nullptr);
+            game.Process(player, PlayCardTask::Minion(lowerCost));
+            CHECK_EQ(shaladrassil->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1), 0);
+        }
+
+        game.Process(player, PlayCardTask::Spell(shaladrassil));
+        const auto cards = hand.GetAll();
+        const auto countCard = [&cards](const std::string& id) {
+            return std::count_if(cards.begin(), cards.end(),
+                [&id](Playable* card) { return card->card->id == id; });
+        };
+
+        if (corrupt)
+        {
+            for (const auto* id : { "EDR_846t1", "EDR_846t2", "EDR_846t3",
+                                    "EDR_846t4", "EDR_846t5" })
+            {
+                CHECK_EQ(countCard(id), 1);
+            }
+        }
+        else
+        {
+            for (const auto* id : { "DREAM_01", "DREAM_02", "DREAM_03",
+                                    "DREAM_04", "DREAM_05" })
+            {
+                CHECK_EQ(countCard(id), 1);
+            }
+        }
+    };
+
+    run(false);
+    run(true);
+}
+
+TEST_CASE("[Druid : Generated cards] - EDR_846 : corrupted Dream effects")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::DRUID;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    player->SetTotalMana(10);
+    player->SetUsedMana(0);
+    auto& hand = *player->GetHandZone();
+    for (Playable* card : hand.GetAll())
+    {
+        hand.Remove(card);
+    }
+
+    Playable* shaladrassil = Generic::DrawCard(
+        player, Cards::FindCardByID("EDR_846"));
+    Playable* highCost = Generic::DrawCard(
+        player, Cards::FindCardByID("CS3_033"));
+    REQUIRE(shaladrassil != nullptr);
+    REQUIRE(highCost != nullptr);
+    game.Process(player, PlayCardTask::Minion(highCost));
+    player->SetUsedMana(0);
+    game.Process(player, PlayCardTask::Spell(shaladrassil));
+
+    const auto findInHand = [&hand](const std::string& id) -> Playable* {
+        for (Playable* card : hand.GetAll())
+        {
+            if (card->card->id == id)
+            {
+                return card;
+            }
+        }
+        return nullptr;
+    };
+    Card* bodyCard = Cards::FindCardByID("CS2_182");
+    REQUIRE(bodyCard != nullptr);
+    auto* friendlyBody = dynamic_cast<Minion*>(Entity::GetFromCard(player, bodyCard));
+    auto* firstEnemyBody = dynamic_cast<Minion*>(Entity::GetFromCard(opponent, bodyCard));
+    REQUIRE(friendlyBody != nullptr);
+    REQUIRE(firstEnemyBody != nullptr);
+    player->GetFieldZone()->Add(friendlyBody);
+    opponent->GetFieldZone()->Add(firstEnemyBody);
+
+    Playable* nightmare = findInHand("EDR_846t1");
+    REQUIRE(nightmare != nullptr);
+    game.Process(player, PlayCardTask::SpellTarget(nightmare, friendlyBody));
+    CHECK_EQ(friendlyBody->GetAttack(), 9);
+    CHECK_EQ(friendlyBody->GetHealth(), 10);
+    CHECK_EQ(friendlyBody->GetGameTag(GameTag::IMMUNE), 1);
+    CHECK_EQ(game.oneTurnEffects.size(), 1);
+
+    Playable* dream = findInHand("EDR_846t2");
+    REQUIRE(dream != nullptr);
+    game.Process(player, PlayCardTask::SpellTarget(dream, firstEnemyBody));
+    CHECK_EQ(firstEnemyBody->GetZoneType(), ZoneType::DECK);
+    CHECK_EQ(firstEnemyBody->player, opponent);
+
+    player->SetUsedMana(0);
+    Playable* sister = findInHand("EDR_846t3");
+    REQUIRE(sister != nullptr);
+    auto* corruptedSister = dynamic_cast<Minion*>(sister);
+    REQUIRE(corruptedSister != nullptr);
+    game.Process(player, PlayCardTask::Minion(sister));
+    CHECK_EQ(corruptedSister->GetAttack(), 6);
+    CHECK_EQ(corruptedSister->GetHealth(), 10);
+    CHECK_EQ(player->GetHero()->GetGameTag(
+                 GameTag::CANT_BE_TARGETED_BY_SPELLS), 1);
+
+    auto* secondEnemyBody = dynamic_cast<Minion*>(Entity::GetFromCard(opponent, bodyCard));
+    REQUIRE(secondEnemyBody != nullptr);
+    opponent->GetFieldZone()->Add(secondEnemyBody);
+    const int opponentHealth = opponent->GetHero()->GetHealth();
+    player->SetUsedMana(0);
+    Playable* awakening = findInHand("EDR_846t4");
+    REQUIRE(awakening != nullptr);
+    game.Process(player, PlayCardTask::Spell(awakening));
+    CHECK_EQ(secondEnemyBody->GetHealth(), 0);
+    CHECK_EQ(opponent->GetHero()->GetHealth(), opponentHealth - 5);
+    CHECK_EQ(friendlyBody->GetHealth(), 10);
+
+    player->SetUsedMana(0);
+    Playable* drake = findInHand("EDR_846t5");
+    REQUIRE(drake != nullptr);
+    auto* corruptedDrake = dynamic_cast<Minion*>(drake);
+    REQUIRE(corruptedDrake != nullptr);
+    game.Process(player, PlayCardTask::Minion(drake));
+    CHECK_EQ(corruptedDrake->GetAttack(), 14);
+    CHECK_EQ(corruptedDrake->GetHealth(), 12);
+    CHECK_EQ(corruptedDrake->card->GetRace(), Race::DRAGON);
+
+    game.Process(player, EndTurnTask());
+    game.ProcessUntil(Step::MAIN_NEXT);
+    CHECK_EQ(game.oneTurnEffects.size(), 0);
+    CHECK_EQ(friendlyBody->GetAttack(), 9);
+    CHECK_EQ(friendlyBody->GetHealth(), 10);
+    CHECK_EQ(friendlyBody->GetGameTag(GameTag::IMMUNE), 0);
+}
+
+TEST_CASE("[Priest : Minion] - CAP_806 : resurrects minions that triggered Reborn")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::PRIEST;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    player->SetTotalMana(10);
+    player->SetUsedMana(0);
+
+    Card* yetiCard = Cards::FindCardByID("CS2_182");
+    REQUIRE(yetiCard != nullptr);
+    auto* original = dynamic_cast<Minion*>(Entity::GetFromCard(player, yetiCard));
+    REQUIRE(original != nullptr);
+    original->SetGameTag(GameTag::REBORN, 1);
+    player->GetFieldZone()->Add(original);
+    player->GetFieldZone()->Remove(original);
+    original->isDestroyed = true;
+    player->GetGraveyardZone()->Add(original);
+    Generic::SummonReborn(original);
+    REQUIRE_EQ(player->GetFieldZone()->GetMinionCount(), 1);
+    CHECK_EQ(player->GetFieldZone()->GetMinions().front()->GetHealth(), 1);
+    CHECK_EQ(player->GetFieldZone()->GetMinions().front()->GetGameTag(
+                 GameTag::MANAMIND_REBORN_THIS_GAME),
+             0);
+
+    Card* enemyYetiCard = Cards::FindCardByID("CS2_182");
+    REQUIRE(enemyYetiCard != nullptr);
+    auto* enemyYeti = dynamic_cast<Minion*>(Entity::GetFromCard(opponent, enemyYetiCard));
+    REQUIRE(enemyYeti != nullptr);
+    opponent->GetFieldZone()->Add(enemyYeti);
+    CHECK_EQ(opponent->GetFieldZone()->GetMinionCount(), 1);
+
+    Playable* raith = Generic::DrawCard(player, Cards::FindCardByID("CAP_806"));
+    REQUIRE(raith != nullptr);
+    game.Process(player, PlayCardTask::Minion(raith));
+
+    REQUIRE_EQ(player->GetFieldZone()->GetMinionCount(), 3);
+    Minion* resurrected = nullptr;
+    for (Minion* minion : player->GetFieldZone()->GetMinions())
+    {
+        if (minion->card == yetiCard)
+        {
+            resurrected = minion;
+        }
+    }
+    REQUIRE(resurrected != nullptr);
+    CHECK_EQ(resurrected, original);
+    CHECK_EQ(resurrected->GetHealth(), 1);
+    CHECK_EQ(resurrected->GetGameTag(GameTag::REBORN), 0);
+    CHECK_EQ(resurrected->GetGameTag(GameTag::MANAMIND_REBORN_THIS_GAME), 1);
+    CHECK_EQ(enemyYeti->GetHealth(), 1);
+    const auto graveyard = player->GetGraveyardZone()->GetAll();
+    CHECK(std::find(graveyard.begin(), graveyard.end(), original) == graveyard.end());
+}
+
+TEST_CASE("[Neutral : Minion] - FIR_959 : immune to Fire spell damage")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::WARRIOR;
+    config.player2Class = CardClass::MAGE;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    Card* fyrakkCard = Cards::FindCardByID("FIR_959");
+    REQUIRE(fyrakkCard != nullptr);
+    auto* fyrakk = dynamic_cast<Minion*>(Entity::GetFromCard(player, fyrakkCard));
+    REQUIRE(fyrakk != nullptr);
+    Generic::Summon(fyrakk, player->GetFieldZone()->GetCount(), nullptr);
+    Generic::AddEnchantment(Cards::FindCardByID("FIR_959e"), fyrakk, fyrakk);
+    CHECK_EQ(fyrakk->GetGameTag(GameTag::MANAMIND_IMMUNE_TO_FIRE_SPELLS), 1);
+
+    Card* fireCard = Cards::FindCardByID("CORE_CS2_029");
+    REQUIRE(fireCard != nullptr);
+    auto* fireSpell = dynamic_cast<Spell*>(Entity::GetFromCard(opponent, fireCard));
+    REQUIRE(fireSpell != nullptr);
+    CHECK_EQ(fireSpell->GetSpellSchool(), SpellSchool::FIRE);
+    Generic::TakeDamageToCharacter(fireSpell, fyrakk, 5, true);
+    CHECK_EQ(fyrakk->GetHealth(), 7);
+
+    Card* frostCard = Cards::FindCardByID("CORE_CS2_024");
+    REQUIRE(frostCard != nullptr);
+    auto* frostSpell = dynamic_cast<Spell*>(Entity::GetFromCard(opponent, frostCard));
+    REQUIRE(frostSpell != nullptr);
+    CHECK_EQ(frostSpell->GetSpellSchool(), SpellSchool::FROST);
+    Generic::TakeDamageToCharacter(frostSpell, fyrakk, 3, true);
+    CHECK_EQ(fyrakk->GetHealth(), 4);
+}
+
+TEST_CASE("[Neutral : Minion] - FIR_959 : casts a capped pool of Fire spells")
+{
+    GameConfig config;
+    config.formatType = FormatType::STANDARD;
+    config.player1Class = CardClass::WARRIOR;
+    config.player2Class = CardClass::MAGE;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+
+    Player* player = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    player->SetTotalMana(10);
+    player->SetUsedMana(0);
+    auto* enemy = dynamic_cast<Minion*>(Entity::GetFromCard(
+        opponent, Cards::FindCardByID("CS2_182")));
+    REQUIRE(enemy != nullptr);
+    Generic::Summon(enemy, opponent->GetFieldZone()->GetCount(), nullptr);
+
+    auto* fyrakk = Generic::DrawCard(player, Cards::FindCardByID("FIR_959"));
+    REQUIRE(fyrakk != nullptr);
+    game.Process(player, PlayCardTask::Minion(fyrakk));
+
+    int fireManaCast = 0;
+    int fireSpellCount = 0;
+    for (Playable* spell : player->GetGraveyardZone()->GetAll())
+    {
+        if (spell != nullptr && spell->card != nullptr &&
+            spell->card->GetCardType() == CardType::SPELL &&
+            spell->card->GetSpellSchool() == SpellSchool::FIRE)
+        {
+            fireManaCast += spell->card->GetCost();
+            ++fireSpellCount;
+        }
+    }
+    CHECK(fireSpellCount > 0);
+    CHECK(fireManaCast <= 15);
 }

@@ -100,6 +100,31 @@ bool AddCardToHand(const Player* player, Playable* entity)
     return true;
 }
 
+void TrackManaSpentWhileHeld(Player* player, int amount,
+                             const Playable* excluded)
+{
+    if (player == nullptr || amount <= 0 || player->GetHandZone() == nullptr)
+    {
+        return;
+    }
+
+    for (Playable* card : player->GetHandZone()->GetAll())
+    {
+        if (card == nullptr || card == excluded || card->card == nullptr)
+        {
+            continue;
+        }
+
+        if (card->card->id != "CATA_131" && card->card->id != "CATA_140")
+        {
+            continue;
+        }
+
+        const int previous = card->GetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1);
+        card->SetGameTag(GameTag::TAG_SCRIPT_DATA_NUM_1, previous + amount);
+    }
+}
+
 void AddEnchantment(Card* enchantmentCard, Playable* creator, Entity* target,
                     int num1, int num2, int entityID)
 {

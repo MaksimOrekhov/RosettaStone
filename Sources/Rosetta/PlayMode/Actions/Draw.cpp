@@ -37,16 +37,21 @@ Playable* Draw(Player* player, Playable* cardToDraw)
     const int val = player->GetNumCardsDrawnThisTurn();
     player->SetNumCardsDrawnThisTurn(val + 1);
 
+    // Godfrey preserves cards drawn while the hand is full, then returns them
+    // when hand space becomes available.
+    if (player->HasGodfrey() && player->GetHandZone()->IsFull())
+    {
+        player->AddOverdrawnCard(playable);
+        return playable;
+    }
+
     // Add card to hand
     if (AddCardToHand(player, playable))
     {
-        if (!cardToDraw)
-        {
-            player->game->taskQueue.StartEvent();
-            player->game->triggerManager.OnDrawCardTrigger(playable);
-            player->game->ProcessTasks();
-            player->game->taskQueue.EndEvent();
-        }
+        player->game->taskQueue.StartEvent();
+        player->game->triggerManager.OnDrawCardTrigger(playable);
+        player->game->ProcessTasks();
+        player->game->taskQueue.EndEvent();
 
         const auto tasks = playable->card->power.GetTopdeckTask();
 
@@ -83,13 +88,10 @@ Playable* Draw(Player* player, Playable* cardToDraw)
             }
         }
 
-        if (!cardToDraw)
-        {
-            player->game->taskQueue.StartEvent();
-            player->game->triggerManager.OnAfterDrawCardTrigger(playable);
-            player->game->ProcessTasks();
-            player->game->taskQueue.EndEvent();
-        }
+        player->game->taskQueue.StartEvent();
+        player->game->triggerManager.OnAfterDrawCardTrigger(playable);
+        player->game->ProcessTasks();
+        player->game->taskQueue.EndEvent();
     }
 
     return playable;

@@ -10,6 +10,7 @@
 #include <Rosetta/PlayMode/Loaders/CardLoader.hpp>
 #include <Rosetta/PlayMode/Loaders/InternalCardLoader.hpp>
 
+
 namespace RosettaStone::PlayMode
 {
 namespace
@@ -19,9 +20,41 @@ Card* GetEmptyCard()
     static Card emptyCard;
     return &emptyCard;
 }
+
+int GetPlayerClassIndex(CardClass cardClass)
+{
+    switch (cardClass)
+    {
+        case CardClass::DEATHKNIGHT:
+            return 0;
+        case CardClass::DRUID:
+            return 1;
+        case CardClass::HUNTER:
+            return 2;
+        case CardClass::MAGE:
+            return 3;
+        case CardClass::PALADIN:
+            return 4;
+        case CardClass::PRIEST:
+            return 5;
+        case CardClass::ROGUE:
+            return 6;
+        case CardClass::SHAMAN:
+            return 7;
+        case CardClass::WARLOCK:
+            return 8;
+        case CardClass::WARRIOR:
+            return 9;
+        case CardClass::DEMONHUNTER:
+            return 10;
+        default:
+            return -1;
+    }
+}
 }  // namespace
 
 std::vector<Card*> Cards::m_cards;
+std::unordered_map<std::string, Card*> Cards::m_cardsById;
 std::array<std::vector<Card*>, NUM_PLAYER_CLASS> Cards::m_standardCards;
 std::array<std::vector<Card*>, NUM_PLAYER_CLASS> Cards::m_wildCards;
 std::vector<Card*> Cards::m_allStandardCards;
@@ -36,37 +69,38 @@ Cards::Cards()
     m_cards.reserve(NUM_PLAY_MODE_CARDS);
 
     CardLoader::Load(m_cards);
+    m_cardsById.reserve(m_cards.size());
+    for (Card* card : m_cards)
+    {
+        m_cardsById.emplace(card->id, card);
+    }
+
     InternalCardLoader::Load(m_cards);
 
     for (Card* card : m_cards)
     {
         card->Initialize();
     }
-
     for (Card* card : m_cards)
     {
-        // NOTE: Subtract 2 because of CardClass::DRUID = 2
-        // NOTE: CardClass::DEMONHUNTER = 14
-        const auto cardClass = card->GetCardClass() == CardClass::DEMONHUNTER
-                                   ? static_cast<int>(card->GetCardClass()) - 5
-                                   : static_cast<int>(card->GetCardClass()) - 2;
+        const int playerClassIndex = GetPlayerClassIndex(card->GetCardClass());
 
         if (card->IsCollectible())
         {
             if (card->IsStandardSet())
             {
-                if (card->GetCardClass() != CardClass::NEUTRAL)
+                if (playerClassIndex >= 0)
                 {
-                    m_standardCards[cardClass].emplace_back(card);
+                    m_standardCards[playerClassIndex].emplace_back(card);
                 }
                 m_allStandardCards.emplace_back(card);
             }
 
             if (card->IsWildSet())
             {
-                if (card->GetCardClass() != CardClass::NEUTRAL)
+                if (playerClassIndex >= 0)
                 {
-                    m_wildCards[cardClass].emplace_back(card);
+                    m_wildCards[playerClassIndex].emplace_back(card);
                 }
                 m_allWildCards.emplace_back(card);
             }
@@ -97,6 +131,7 @@ Cards::Cards()
 
 Cards::~Cards()
 {
+    m_cardsById.clear();
     for (Card* card : m_cards)
     {
         delete card;
@@ -118,14 +153,16 @@ const std::vector<Card*>& Cards::GetAllCards()
 
 const std::vector<Card*>& Cards::GetStandardCards(CardClass cardClass)
 {
-    // NOTE: Subtract 2 because of CardClass::DRUID = 2
-    return m_standardCards[static_cast<int>(cardClass) - 2];
+    static const std::vector<Card*> emptyCards;
+    const int index = GetPlayerClassIndex(cardClass);
+    return index >= 0 ? m_standardCards[index] : emptyCards;
 }
 
 const std::vector<Card*>& Cards::GetWildCards(CardClass cardClass)
 {
-    // NOTE: Subtract 2 because of CardClass::DRUID = 2
-    return m_wildCards[static_cast<int>(cardClass) - 2];
+    static const std::vector<Card*> emptyCards;
+    const int index = GetPlayerClassIndex(cardClass);
+    return index >= 0 ? m_wildCards[index] : emptyCards;
 }
 
 const std::vector<Card*>& Cards::GetAllStandardCards()
@@ -192,12 +229,10 @@ std::vector<Card*> Cards::GetPoisons()
 
 Card* Cards::FindCardByID(const std::string_view& id)
 {
-    for (Card* card : m_cards)
+    const auto it = m_cardsById.find(std::string(id));
+    if (it != m_cardsById.end())
     {
-        if (card->id == id)
-        {
-            return card;
-        }
+        return it->second;
     }
 
     return GetEmptyCard();

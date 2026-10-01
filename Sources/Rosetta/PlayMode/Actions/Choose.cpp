@@ -7,8 +7,10 @@
 #include <Rosetta/PlayMode/Actions/Choose.hpp>
 #include <Rosetta/PlayMode/Actions/Copy.hpp>
 #include <Rosetta/PlayMode/Actions/Generic.hpp>
+#include <Rosetta/PlayMode/Actions/Kazakus.hpp>
 #include <Rosetta/PlayMode/Actions/Summon.hpp>
 #include <Rosetta/PlayMode/Cards/Cards.hpp>
+#include <Rosetta/PlayMode/Enchants/Effects.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Tasks/ITask.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
@@ -19,6 +21,7 @@
 #include <effolkronium/random.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
 
 using Random = effolkronium::random_static;
@@ -106,6 +109,15 @@ bool ChoicePick(Player* player, int choice)
         return false;
     }
 
+    std::optional<DarkGift> selectedDarkGift;
+    if (const auto found = std::ranges::find(
+            choiceVal->darkGiftOptionsByEntityID, choice,
+            &std::pair<int, DarkGift>::first);
+        found != choiceVal->darkGiftOptionsByEntityID.end())
+    {
+        selectedDarkGift = found->second;
+    }
+
     // Process pick by choice action
     switch (choiceVal->choiceAction)
     {
@@ -121,6 +133,21 @@ bool ChoicePick(Player* player, int choice)
         {
             player->GetSetasideZone()->Remove(playable);
             AddCardToHand(player, playable);
+            break;
+        }
+        case ChoiceAction::HAND_REDUCE_BY_HERO_ATTACK:
+        {
+            player->GetSetasideZone()->Remove(playable);
+            const auto* source = player->choice->source;
+            const int heroAttack = source == nullptr
+                                       ? 0
+                                       : source->GetGameTag(
+                                             GameTag::TAG_SCRIPT_DATA_NUM_2);
+            AddCardToHand(player, playable);
+            if (heroAttack > 0)
+            {
+                Effects::ReduceCost(heroAttack)->ApplyTo(playable);
+            }
             break;
         }
         case ChoiceAction::HAND_COPY:
@@ -147,9 +174,15 @@ bool ChoicePick(Player* player, int choice)
             break;
         }
         case ChoiceAction::DRAW_FROM_DECK:
+        case ChoiceAction::DRAW_TEMPORARY_FROM_DECK:  // Catacombs draw.
         {
             player->GetDeckZone()->Remove(playable);
             AddCardToHand(player, playable);
+            if (choiceVal->choiceAction ==
+                ChoiceAction::DRAW_TEMPORARY_FROM_DECK)
+            {
+                player->game->temporaryCardEntityIDs.emplace_back(choice);
+            }
             break;
         }
         case ChoiceAction::CAST_SPELL:
@@ -174,6 +207,24 @@ bool ChoicePick(Player* player, int choice)
             }
             break;
         }
+        case ChoiceAction::SUMMON_COPY_2_3:
+        {
+            if (!player->GetFieldZone()->IsFull())
+            {
+                player->GetSetasideZone()->Remove(playable);
+                auto* minion = dynamic_cast<Minion*>(playable);
+                if (!minion)
+                {
+                    break;
+                }
+                minion->SetAttack(2);
+                minion->SetBaseHealth(3);
+                const int sourceID =
+                    player->choice->source->GetGameTag(GameTag::ENTITY_ID);
+                Summon(minion, -1, player->game->entityList[sourceID]);
+            }
+            break;
+        }
         case ChoiceAction::DREDGE:
         {
             const auto deckZone = player->GetDeckZone();
@@ -183,6 +234,27 @@ bool ChoicePick(Player* player, int choice)
         case ChoiceAction::STACK:
         {
             player->choice->AddToStack(choice);
+            break;
+        }
+        case ChoiceAction::MOTHER:
+        {
+            const auto hand = player->GetHandZone()->GetAll();
+            const auto selected = std::ranges::find(hand, playable);
+            if (selected != hand.end())
+            {
+                const auto selectedIndex =
+                    std::distance(hand.begin(), selected);
+                for (auto it = hand.begin(); it != hand.end(); ++it)
+                {
+                    const auto distance = std::abs(static_cast<int>(
+                        std::distance(hand.begin(), it) - selectedIndex));
+                    const int reduction = 5 - distance;
+                    if (reduction > 0)
+                    {
+                        Effects::ReduceCost(reduction)->ApplyTo(*it);
+                    }
+                }
+            }
             break;
         }
         case ChoiceAction::ENVOY_OF_LAZUL:
@@ -305,6 +377,71 @@ bool ChoicePick(Player* player, int choice)
             }
             break;
         }
+        case ChoiceAction::KAZAKUS:
+        {
+            player->GetSetasideZone()->Remove(playable);
+            if (choiceVal->depth == 1)
+            {
+                choiceVal->source->SetGameTag(
+                    GameTag::TAG_SCRIPT_DATA_NUM_1,
+                    std::stoi(playable->card->id.substr(
+                        std::string("MANA_KAZAKUS_EFFECT_").size())));
+            }
+            else if (choiceVal->depth == 2)
+            {
+                choiceVal->source->SetGameTag(
+                    GameTag::TAG_SCRIPT_DATA_NUM_2,
+                    std::stoi(playable->card->id.substr(
+                        std::string("MANA_KAZAKUS_EFFECT_").size())));
+            }
+            else
+            {
+                const int length = std::stoi(playable->card->id.substr(
+                    std::string("MANA_KAZAKUS_LENGTH_").size()));
+                const int firstEffect = choiceVal->source->GetGameTag(
+                    GameTag::TAG_SCRIPT_DATA_NUM_1);
+                const int secondEffect = choiceVal->source->GetGameTag(
+                    GameTag::TAG_SCRIPT_DATA_NUM_2);
+
+                if (length == 7)
+                {
+                    std::map<GameTag, int> tags{
+                        { GameTag::CREATOR,
+                          choiceVal->source->GetGameTag(GameTag::ENTITY_ID) },
+                        { GameTag::TAG_SCRIPT_DATA_NUM_1, firstEffect },
+                        { GameTag::TAG_SCRIPT_DATA_NUM_2, secondEffect },
+                        { GameTag::COST, 7 }
+                    };
+                    Playable* trial = Entity::GetFromCard(
+                        player, Cards::FindCardByID("MANA_KAZAKUS_TRIAL"), tags,
+                        player->GetSetasideZone());
+                    player->GetSetasideZone()->Add(trial);
+                    player->GetSetasideZone()->Remove(trial);
+                    AddCardToHand(player, trial);
+                }
+                else
+                {
+                    const int packedEffects = firstEffect * 10 + secondEffect;
+                    Generic::AddEnchantment(
+                        Cards::FindCardByID("MANA_KAZAKUS_TIMER"),
+                        dynamic_cast<Playable*>(choiceVal->source),
+                        player->GetHero(), packedEffects, length == 4 ? 1 : 4);
+                }
+            }
+            break;
+        }
+    }
+
+    if (selectedDarkGift)
+    {
+        ApplyDarkGift(*playable, *selectedDarkGift);
+        if (*selectedDarkGift == DarkGift::STATS_TOP_DECK &&
+            playable->zone &&
+            playable->zone->GetType() == ZoneType::HAND)
+        {
+            player->GetHandZone()->Remove(playable);
+            player->GetDeckZone()->Add(playable);
+        }
     }
 
     auto nextChoice = choiceVal->TryPopNextChoice(choice);
@@ -370,6 +507,14 @@ bool ChoicePick(Player* player, int choice)
             player->game->ProcessDestroyAndUpdateAura();
         }
 
+        // Repeated M.O.T.H.E.R. Battlecries resolve as one choice per trigger.
+        if (choiceVal->choiceAction == ChoiceAction::MOTHER &&
+            choiceVal->depth > 1)
+        {
+            --choiceVal->depth;
+            return true;
+        }
+
         // It's done! - Reset choice
         player->choice.reset();
     }
@@ -384,9 +529,15 @@ bool ChoicePick(Player* player, int choice)
 void CreateChoice(Player* player, Entity* source, ChoiceType type,
                   ChoiceAction action, const std::vector<int>& choices)
 {
-    // Block it if choice is exist
+    // Preserve repeated M.O.T.H.E.R. Battlecries as sequential hand choices.
     if (player->choice)
     {
+        if (action == ChoiceAction::MOTHER &&
+            player->choice->choiceAction == ChoiceAction::MOTHER &&
+            player->choice->source == source)
+        {
+            ++player->choice->depth;
+        }
         return;
     }
 

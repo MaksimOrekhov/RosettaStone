@@ -25,17 +25,17 @@ const std::string INVALID_CARD_ID = "INVALID";
 
 //! Specifies which card sets combine into the STANDARD set.
 constexpr std::array<CardSet, 7> STANDARD_CARD_SETS = {
-    CardSet::CORE,                     // Core, 2022
-    CardSet::THE_BARRENS,              // Forged in the Barrens, 2021
-    CardSet::STORMWIND,                // United in Stormwind, 2021
-    CardSet::ALTERAC_VALLEY,           // Fractured in Alterac Valley, 2021
-    CardSet::THE_SUNKEN_CITY,          // Voyage to the Sunken City, 2022
-    CardSet::REVENDRETH,               // Murder at Castle Nathria, 2022
-    CardSet::RETURN_OF_THE_LICH_KING,  // March of the Lich King, 2022
+    CardSet::CORE,
+    CardSet::EVENT,
+    CardSet::EMERALD_DREAM,
+    CardSet::THE_LOST_CITY,
+    CardSet::TIME_TRAVEL,
+    CardSet::CATACLYSM,
+    CardSet::ESCAPEFROM_VIOLET_HOLD,
 };
 
 //! Specifies which card sets combine into the WILD set.
-constexpr std::array<CardSet, 31> WILD_CARD_SETS = {
+constexpr std::array<CardSet, 37> WILD_CARD_SETS = {
     CardSet::EXPERT1,                  // Classic, 2014
     CardSet::LEGACY,                   // Legacy, 2021
     CardSet::NAXX,                     // Curse of Naxxramas, 2014
@@ -67,6 +67,12 @@ constexpr std::array<CardSet, 31> WILD_CARD_SETS = {
     CardSet::REVENDRETH,               // Murder at Castle Nathria, 2022
     CardSet::RETURN_OF_THE_LICH_KING,  // March of the Lich King, 2022
     CardSet::PLACEHOLDER_202204,  // Placeholder between 2020.04 and 2022.04
+    CardSet::EVENT,
+    CardSet::EMERALD_DREAM,
+    CardSet::THE_LOST_CITY,
+    CardSet::TIME_TRAVEL,
+    CardSet::CATACLYSM,
+    CardSet::ESCAPEFROM_VIOLET_HOLD,
 };
 
 //! Specifies which card sets combine into the CLASSIC set.
@@ -80,10 +86,10 @@ constexpr int NUM_PLAY_MODE_CARDS = 15818;
 //! The number of Battlegrounds cards.
 constexpr int NUM_BATTLEGROUNDS_CARDS = 17611;
 
-//! The number of player class.
-//! \note Druid, Hunter, Mage, Paladin, Priest, Rogue, Shaman, Warlock, Warrior,
-//! Demon Hunter
-constexpr int NUM_PLAYER_CLASS = 10;
+//! The number of player classes supported in Standard card pools.
+//! \note Death Knight, Druid, Hunter, Mage, Paladin, Priest, Rogue, Shaman,
+//! Warlock, Warrior, Demon Hunter
+constexpr int NUM_PLAYER_CLASS = 11;
 
 //! The number of cards that can be stored in the deck at game start.
 constexpr int START_DECK_SIZE = 30;

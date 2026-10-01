@@ -60,6 +60,7 @@ DiscoverTask::DiscoverTask(const std::vector<std::string>& cardIDs,
     }
 }
 
+// Keep the configured choice action distinct from DiscoverType's default.
 DiscoverTask::DiscoverTask(DiscoverType discoverType, int numberOfChoices,
                            int repeat, bool doShuffle)
     : m_discoverType(discoverType),
@@ -68,6 +69,14 @@ DiscoverTask::DiscoverTask(DiscoverType discoverType, int numberOfChoices,
       m_doShuffle(doShuffle)
 {
     // Do nothing
+}
+
+DiscoverTask::DiscoverTask(DiscoverType discoverType, int numberOfChoices,
+                           int repeat, bool doShuffle,
+                           ChoiceAction choiceAction)
+    : DiscoverTask(discoverType, numberOfChoices, repeat, doShuffle)
+{
+    m_configuredChoiceAction = choiceAction;
 }
 
 DiscoverTask::DiscoverTask(std::vector<Card*> cards, DiscoverType discoverType,
@@ -172,6 +181,10 @@ TaskStatus DiscoverTask::Impl(Player* player)
     {
         std::tie(cardsForGeneration, cardsForOtherEffect) =
             Discover(player->game, player, m_discoverType, m_choiceAction);
+        if (m_configuredChoiceAction != ChoiceAction::INVALID)
+        {
+            m_choiceAction = m_configuredChoiceAction;
+        }
         result = GetChoices(m_source, cardsForGeneration, cardsForOtherEffect,
                             m_numberOfChoices, m_doShuffle);
     }
@@ -223,6 +236,14 @@ TaskStatus DiscoverTask::Impl(Player* player)
 
 std::unique_ptr<ITask> DiscoverTask::CloneImpl()
 {
+    if (m_discoverType != DiscoverType::INVALID &&
+        m_configuredChoiceAction != ChoiceAction::INVALID)
+    {
+        return std::make_unique<DiscoverTask>(
+            m_discoverType, m_numberOfChoices, m_repeat, m_doShuffle,
+            m_configuredChoiceAction);
+    }
+
     return std::make_unique<DiscoverTask>(
         m_cards, m_discoverType, m_discoverCriteria.cardType,
         m_discoverCriteria.cardClass, m_discoverCriteria.race,
@@ -337,6 +358,17 @@ auto DiscoverTask::Discover(const Game* game, Player* player,
             for (auto& card : allCards)
             {
                 if (card->GetCost() == 3)
+                {
+                    cardsForGeneration.emplace_back(card);
+                }
+            }
+            break;
+        case DiscoverType::THREE_COST_MINION:
+            choiceAction = ChoiceAction::SUMMON_COPY_2_3;
+            for (auto& card : allCards)
+            {
+                if (card->GetCardType() == CardType::MINION &&
+                    card->GetCost() == 3)
                 {
                     cardsForGeneration.emplace_back(card);
                 }
@@ -516,6 +548,26 @@ auto DiscoverTask::Discover(const Game* game, Player* player,
             for (auto& card : allCards)
             {
                 if (card->GetRace() == Race::DRAGON)
+                {
+                    cardsForGeneration.emplace_back(card);
+                }
+            }
+            break;
+        case DiscoverType::DRUID_CARD:
+            choiceAction = ChoiceAction::HAND_REDUCE_BY_HERO_ATTACK;
+            for (auto& card : allCards)
+            {
+                if (card->GetCardClass() == CardClass::DRUID)
+                {
+                    cardsForGeneration.emplace_back(card);
+                }
+            }
+            break;
+        case DiscoverType::PIRATE:
+            choiceAction = ChoiceAction::HAND;
+            for (auto& card : allCards)
+            {
+                if (card->GetRace() == Race::PIRATE)
                 {
                     cardsForGeneration.emplace_back(card);
                 }

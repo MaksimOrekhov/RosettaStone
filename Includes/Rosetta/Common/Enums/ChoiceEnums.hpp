@@ -22,6 +22,7 @@ enum class DiscoverType
     CHOOSE_ONE,
     ONE_COST_CARD,
     THREE_COST_CARD,
+    THREE_COST_MINION,
     FOUR_COST_CARD,
     MINION,
     SIX_COST_MINION_SUMMON,
@@ -39,6 +40,8 @@ enum class DiscoverType
     BEAST,
     DEMON,
     DRAGON,
+    DRUID_CARD,
+    PIRATE,
     MECHANICAL,
     LACKEY,
     HEISTBARON_TOGWAGGLE,
@@ -58,25 +61,30 @@ enum class DiscoverType
 //! The action type of choice.
 enum class ChoiceAction
 {
-    INVALID,             //!< Invalid action.
-    CHANGE_HERO_POWER,   //!< Change hero power.
-    HAND,                //!< Hand.
-    HAND_COPY,           //!< Hand by copying.
-    HAND_AND_STACK,      //!< Hand and stack.
-    DECK,                //!< Deck.
-    ENCHANTMENT,         //!< Enchantment.
-    DRAW_FROM_DECK,      //!< Draw from deck.
-    CAST_SPELL,          //!< Cast spell.
-    SUMMON,              //!< Summon.
-    DREDGE,              //!< Dredge.
-    STACK,               //!< Stack.
-    ENVOY_OF_LAZUL,      //!< Envoy Of Lazul.
-    SIGHTLESS_WATCHER,   //!< Sightless Watcher.
-    MADAME_LAZUL,        //!< Madame Lazul.
-    SWAMPQUEEN_HAGATHA,  //!< Swampqueen Hagatha.
-    TORTOLLAN_PILGRIM,   //!< Tortollan Pilgrim.
-    SIAMAT,              //!< Siamat.
-    VULPERA_SCOUNDREL,   //!< Vulpera Scoundrel.
+    INVALID,                   //!< Invalid action.
+    CHANGE_HERO_POWER,         //!< Change hero power.
+    HAND,                      //!< Hand.
+    HAND_COPY,                 //!< Hand by copying.
+    HAND_AND_STACK,            //!< Hand and stack.
+    DECK,                      //!< Deck.
+    ENCHANTMENT,               //!< Enchantment.
+    DRAW_FROM_DECK,            //!< Draw from deck.
+    CAST_SPELL,                //!< Cast spell.
+    SUMMON,                    //!< Summon.
+    SUMMON_COPY_2_3,           //!< Summon the selected minion as a 2/3 copy.
+    HAND_REDUCE_BY_HERO_ATTACK, //!< Add selected card to hand, discounting by hero Attack.
+    DREDGE,                    //!< Dredge.
+    STACK,                     //!< Stack.
+    ENVOY_OF_LAZUL,            //!< Envoy Of Lazul.
+    SIGHTLESS_WATCHER,         //!< Sightless Watcher.
+    MADAME_LAZUL,              //!< Madame Lazul.
+    SWAMPQUEEN_HAGATHA,        //!< Swampqueen Hagatha.
+    TORTOLLAN_PILGRIM,         //!< Tortollan Pilgrim.
+    SIAMAT,                    //!< Siamat.
+    VULPERA_SCOUNDREL,         //!< Vulpera Scoundrel.
+    MOTHER,                    //!< M.O.T.H.E.R. hand cost-reduction choice.
+    DRAW_TEMPORARY_FROM_DECK,  //!< Draw from deck; remove at end of turn.
+    KAZAKUS,                   //!< Godfather Kazakus custom trial choices.
 };
 }  // namespace RosettaStone
 
