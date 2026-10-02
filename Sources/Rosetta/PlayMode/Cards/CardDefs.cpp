@@ -29,6 +29,7 @@
 #include <Rosetta/PlayMode/CardSets/ManaMindRepeatedTriggerDrawGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindFilteredSchoolDrawGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindMinionSetEnchantGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindHeldCardGateFixedBattlecryGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindMetadataOnlyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/LootapaloozaCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/NaxxCardsGen.hpp>
@@ -96,6 +97,7 @@ CardDefs::CardDefs()
     ManaMindRepeatedTriggerDrawGen::AddAll(m_data);
     ManaMindFilteredSchoolDrawGen::AddAll(m_data);
     ManaMindMinionSetEnchantGen::AddAll(m_data);
+    ManaMindHeldCardGateFixedBattlecryGen::AddAll(m_data);
     ManaMindMetadataOnlyCardsGen::AddAll(m_data);
 }
 

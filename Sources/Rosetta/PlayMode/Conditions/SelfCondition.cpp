@@ -4,6 +4,7 @@
 // Copyright (c) 2017-2024 Chris Ohk
 
 #include <Rosetta/PlayMode/Conditions/SelfCondition.hpp>
+#include <Rosetta/PlayMode/Conditions/HandPredicates.hpp>
 #include <Rosetta/PlayMode/Games/Game.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
 #include <Rosetta/PlayMode/Zones/FieldZone.hpp>
@@ -369,14 +370,8 @@ SelfCondition SelfCondition::IsHoldingSecret()
 
 SelfCondition SelfCondition::IsHoldingRace(Race race)
 {
-    return SelfCondition([race](const Playable* playable) {
-        auto cards = playable->player->GetHandZone()->GetAll();
-
-        return std::any_of(
-            cards.begin(), cards.end(), [race](const Playable* handCard) {
-                return handCard->card->GetCardType() == CardType::MINION &&
-                       handCard->card->GetRace() == race;
-            });
+    return SelfCondition([race](Playable* playable) {
+        return HandPredicates::MinionRaceInHand(playable->player, race);
     });
 }
 
@@ -1128,14 +1123,21 @@ SelfCondition SelfCondition::HasNotSpellDamageOnHero()
 
 SelfCondition SelfCondition::Has5MoreCostSpellInHand()
 {
-    return SelfCondition([](const Playable* playable) {
-        auto cards = playable->player->GetHandZone()->GetAll();
+    return HasSpellInHandWithCostAtLeast(5);
+}
 
-        return std::any_of(
-            cards.begin(), cards.end(), [](const Playable* handCard) {
-                return handCard->card->GetCardType() == CardType::SPELL &&
-                       handCard->GetCost() >= 5;
-            });
+SelfCondition SelfCondition::HasSpellInHandWithCostAtLeast(int minimumCost)
+{
+    return SelfCondition([minimumCost](Playable* playable) {
+        return HandPredicates::SpellCostAtLeastInHand(playable->player,
+                                                      minimumCost);
+    });
+}
+
+SelfCondition SelfCondition::IsHoldingSpellSchool(SpellSchool school)
+{
+    return SelfCondition([school](Playable* playable) {
+        return HandPredicates::SpellSchoolInHand(playable->player, school);
     });
 }
 

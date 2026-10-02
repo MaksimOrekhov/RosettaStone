@@ -162,6 +162,20 @@ void CardLoader::Load(std::vector<Card*>& cards)
                            ? 0
                            : static_cast<int>(StrToEnum<Race>(
                                  cardData["race"].get<std::string>()));
+        int secondCardRace = 0;
+        if (cardData.contains("races") && cardData["races"].is_array())
+        {
+            for (const auto& raceValue : cardData["races"])
+            {
+                const int race = static_cast<int>(
+                    StrToEnum<Race>(raceValue.get<std::string>()));
+                if (race != cardRace && race != static_cast<int>(Race::INVALID))
+                {
+                    secondCardRace = race;
+                    break;
+                }
+            }
+        }
         const int cardType = cardData["type"].is_null()
                                  ? 0
                                  : static_cast<int>(StrToEnum<CardType>(
@@ -308,6 +322,7 @@ void CardLoader::Load(std::vector<Card*>& cards)
         card->gameTags = gameTags;
         card->gameTags[GameTag::ATK] = attack;
         card->gameTags[GameTag::CARDRACE] = cardRace;
+        card->gameTags[GameTag::CARDRACE2] = secondCardRace;
         card->gameTags[GameTag::CARD_SET] = cardSet;
         card->gameTags[GameTag::CARDTYPE] = cardType;
         card->gameTags[GameTag::CLASS] = cardClass;

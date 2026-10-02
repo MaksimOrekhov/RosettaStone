@@ -693,3 +693,6 @@ X(AttackVisualType)
 X(DevState)
 X(GrantCharge)
 X(HealTarget)
+// Secondary minion race from current Standard card metadata. Appended to keep
+// existing internal tag values stable.
+X(CARDRACE2)

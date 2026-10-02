@@ -108,6 +108,7 @@
 #include <Rosetta/PlayMode/CardSets/ManaMindDragonPoolCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindEffectCompositionGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindFilteredSchoolDrawGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindHeldCardGateFixedBattlecryGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindKeywordOnlyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindMetadataOnlyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindMinionSetEnchantGen.hpp>
@@ -133,6 +134,7 @@
 #include <Rosetta/PlayMode/Cards/CardPowers.hpp>
 #include <Rosetta/PlayMode/Cards/CardProperty.hpp>
 #include <Rosetta/PlayMode/Cards/Cards.hpp>
+#include <Rosetta/PlayMode/Conditions/HandPredicates.hpp>
 #include <Rosetta/PlayMode/Conditions/RelaCondition.hpp>
 #include <Rosetta/PlayMode/Conditions/SelfCondition.hpp>
 #include <Rosetta/PlayMode/Decks/Deck.hpp>

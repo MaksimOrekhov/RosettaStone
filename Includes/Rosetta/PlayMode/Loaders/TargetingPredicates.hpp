@@ -140,6 +140,10 @@ class TargetingPredicates
     //! the player holds a Dragon in hand.
     //! \return Generated AvailabilityPredicate for intended purpose.
     static AvailabilityPredicate DragonInHand();
+
+    //! Predicate wrapper for checking that the player holds a spell whose
+    //! current cost is at least the supplied threshold.
+    static AvailabilityPredicate SpellCostAtLeastInHand(int minimumCost);
 };
 }  // namespace RosettaStone::PlayMode
 

@@ -5,8 +5,8 @@
 // property of any third parties.
 
 #include <Rosetta/PlayMode/Games/Game.hpp>
+#include <Rosetta/PlayMode/Conditions/HandPredicates.hpp>
 #include <Rosetta/PlayMode/Loaders/TargetingPredicates.hpp>
-#include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Models/Minion.hpp>
 #include <Rosetta/PlayMode/Models/Player.hpp>
 #include <Rosetta/PlayMode/Zones/DeckZone.hpp>
@@ -204,14 +204,16 @@ AvailabilityPredicate TargetingPredicates::MaximumCardsInDeck(int value)
 
 AvailabilityPredicate TargetingPredicates::DragonInHand()
 {
-    return [](const Player* player, [[maybe_unused]] Card* card) {
-        auto cards = player->GetHandZone()->GetAll();
+    return [](Player* player, [[maybe_unused]] Card* card) {
+        return HandPredicates::MinionRaceInHand(player, Race::DRAGON);
+    };
+}
 
-        return std::any_of(
-            cards.begin(), cards.end(), [](const Playable* handCard) {
-                return handCard->card->GetCardType() == CardType::MINION &&
-                       handCard->card->GetRace() == Race::DRAGON;
-            });
+AvailabilityPredicate TargetingPredicates::SpellCostAtLeastInHand(
+    int minimumCost)
+{
+    return [minimumCost](Player* player, [[maybe_unused]] Card* card) {
+        return HandPredicates::SpellCostAtLeastInHand(player, minimumCost);
     };
 }
 }  // namespace RosettaStone::PlayMode

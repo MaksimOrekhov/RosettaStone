@@ -155,6 +155,12 @@ void Card::Initialize()
                     TargetingPredicates::MaximumCardsInDeck(
                         requirement.second));
                 break;
+            case PlayReq::REQ_TARGET_IF_AVAILABLE_AND_SPELL_COST_AT_LEAST_IN_HAND:
+                needsTarget = true;
+                targetingAvailabilityPredicate.emplace_back(
+                    TargetingPredicates::SpellCostAtLeastInHand(
+                        requirement.second));
+                break;
             default:
                 continue;
         }
@@ -242,6 +248,20 @@ Race Card::GetRace() const
     }
 
     return static_cast<Race>(race->second);
+}
+
+bool Card::HasRace(Race race) const
+{
+    if (race == Race::INVALID)
+    {
+        return false;
+    }
+
+    const auto primaryRace = GetRace();
+    const auto secondary = gameTags.find(GameTag::CARDRACE2);
+    return primaryRace == Race::ALL || primaryRace == race ||
+           (secondary != gameTags.end() &&
+            static_cast<Race>(secondary->second) == race);
 }
 
 SpellSchool Card::GetSpellSchool() const

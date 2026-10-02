@@ -57,6 +57,10 @@ class Card
     //! \return The value of race.
     Race GetRace() const;
 
+    //! Returns whether the card has \p race as either of its printed races.
+    //! Race::ALL matches every concrete minion race.
+    bool HasRace(Race race) const;
+
     //! Returns the value of spell school.
     //! \return The value of spell school.
     SpellSchool GetSpellSchool() const;

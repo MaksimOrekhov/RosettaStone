@@ -568,6 +568,8 @@ class SelfCondition
     //! that costs 5 or more in hand.
     //! \return Generated SelfCondition for intended purpose.
     static SelfCondition Has5MoreCostSpellInHand();
+    static SelfCondition HasSpellInHandWithCostAtLeast(int minimumCost);
+    static SelfCondition IsHoldingSpellSchool(SpellSchool school);
 
     //! SelfCondition wrapper for checking the player has demon
     //! that costs 5 or more in hand.
