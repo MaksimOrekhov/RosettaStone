@@ -222,7 +222,8 @@ void CardLoader::Load(std::vector<Card*>& cards)
             // this engine predates the keyword name used by card metadata.
             if (mechanicName == "ELUSIVE")
             {
-                gameTags.emplace(GameTag::CANT_BE_TARGETED_BY_OPPONENTS, 1);
+                gameTags.emplace(GameTag::CANT_BE_TARGETED_BY_SPELLS, 1);
+                gameTags.emplace(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS, 1);
                 continue;
             }
 

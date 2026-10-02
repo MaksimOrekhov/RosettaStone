@@ -284,7 +284,10 @@ int Character::TakeDamage(Playable* source, int damage)
         }
     }
 
-    if (minion && GetGameTag(GameTag::DIVINE_SHIELD) == 1)
+    // Character-targeted shield grants also protect heroes. Preserve the
+    // existing minion path; a zero-damage hero event does not spend its shield.
+    if ((minion || (hero && damage > 0)) &&
+        GetGameTag(GameTag::DIVINE_SHIELD) == 1)
     {
         SetGameTag(GameTag::DIVINE_SHIELD, 0);
         return 0;

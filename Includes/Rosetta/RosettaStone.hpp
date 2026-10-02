@@ -110,6 +110,7 @@
 #include <Rosetta/PlayMode/CardSets/ManaMindFilteredSchoolDrawGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindKeywordOnlyCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindMetadataOnlyCardsGen.hpp>
+#include <Rosetta/PlayMode/CardSets/ManaMindMinionSetEnchantGen.hpp>
 #include <Rosetta/PlayMode/CardSets/ManaMindRepeatedTriggerDrawGen.hpp>
 #include <Rosetta/PlayMode/CardSets/NaxxCardsGen.hpp>
 #include <Rosetta/PlayMode/CardSets/OgCardsGen.hpp>

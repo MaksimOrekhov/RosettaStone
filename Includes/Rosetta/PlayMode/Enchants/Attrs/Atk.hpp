@@ -58,7 +58,18 @@ class Atk : public SelfContainedIntAttr<Atk, Entity>
 
         if (const auto character = dynamic_cast<Character*>(entity); character)
         {
-            SelfContainedIntAttr::Apply(character, effectOp, value);
+            if (effectOp == EffectOperator::ADD || effectOp == EffectOperator::SUB)
+            {
+                // A fixed stat grant changes the stored value, not the aura.
+                const int aura = entity->auraEffects ?
+                    entity->auraEffects->GetGameTag(GameTag::ATK) : 0;
+                const int delta = effectOp == EffectOperator::ADD ? value : -value;
+                character->SetAttack(GetValue(entity) - aura + delta);
+            }
+            else
+            {
+                SelfContainedIntAttr::Apply(character, effectOp, value);
+            }
 
             if (const auto hero = dynamic_cast<Hero*>(character);
                 hero && effectOp == EffectOperator::ADD)

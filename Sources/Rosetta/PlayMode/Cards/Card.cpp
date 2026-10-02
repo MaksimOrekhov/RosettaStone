@@ -629,6 +629,14 @@ bool Card::IsPlayableByCardReq(Player* player) const
 
 bool Card::TargetingRequirements(Player* player, Character* target)
 {
+    if ((GetCardType() == CardType::SPELL &&
+         target->GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS) != 0) ||
+        (GetCardType() == CardType::HERO_POWER &&
+         target->GetGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS) != 0))
+    {
+        return false;
+    }
+
     const bool targetsLocation =
         playRequirements.contains(PlayReq::REQ_LOCATION_TARGET);
 

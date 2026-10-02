@@ -62,7 +62,17 @@ class Health : public SelfContainedIntAttr<Health, Entity>
             }
         }
 
-        SelfContainedIntAttr::Apply(entity, effectOp, value);
+        if (effectOp == EffectOperator::ADD || effectOp == EffectOperator::SUB)
+        {
+            const int aura = entity->auraEffects ?
+                entity->auraEffects->GetGameTag(GameTag::HEALTH) : 0;
+            const int delta = effectOp == EffectOperator::ADD ? value : -value;
+            SetValue(entity, GetValue(entity) - aura + delta);
+        }
+        else
+        {
+            SelfContainedIntAttr::Apply(entity, effectOp, value);
+        }
     }
 
     //! Removes the aura that affects the attribute.
