@@ -441,5 +441,7 @@ void Character::CopyInternalAttributes(Character* copy) const
                      GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS));
     copy->SetGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS,
                      GetGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS));
+    copy->SetGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS,
+                     GetGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS));
 }
 }  // namespace RosettaStone::PlayMode

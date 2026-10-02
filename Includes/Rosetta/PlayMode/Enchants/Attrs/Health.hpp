@@ -75,6 +75,21 @@ class Health : public SelfContainedIntAttr<Health, Entity>
         }
     }
 
+    //! Removes a fixed health effect without baking the active aura into base health.
+    void Remove(Entity* entity, EffectOperator effectOp, int value) override
+    {
+        if (effectOp == EffectOperator::ADD || effectOp == EffectOperator::SUB)
+        {
+            const int aura = entity->auraEffects ?
+                entity->auraEffects->GetGameTag(GameTag::HEALTH) : 0;
+            const int delta = effectOp == EffectOperator::ADD ? -value : value;
+            SetValue(entity, GetValue(entity) - aura + delta);
+            return;
+        }
+
+        SelfContainedIntAttr::Remove(entity, effectOp, value);
+    }
+
     //! Removes the aura that affects the attribute.
     //! \param entity The entity to remove the aura.
     //! \param effectOp The effect operator to change the attribute.

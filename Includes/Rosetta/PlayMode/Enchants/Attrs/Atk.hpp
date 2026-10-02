@@ -92,6 +92,22 @@ class Atk : public SelfContainedIntAttr<Atk, Entity>
         }
     }
 
+    //! Removes a fixed attack effect without baking the active aura into base attack.
+    void Remove(Entity* entity, EffectOperator effectOp, int value) override
+    {
+        if (const auto character = dynamic_cast<Character*>(entity); character &&
+            (effectOp == EffectOperator::ADD || effectOp == EffectOperator::SUB))
+        {
+            const int aura = entity->auraEffects ?
+                entity->auraEffects->GetGameTag(GameTag::ATK) : 0;
+            const int delta = effectOp == EffectOperator::ADD ? -value : value;
+            character->SetAttack(GetValue(entity) - aura + delta);
+            return;
+        }
+
+        SelfContainedIntAttr::Remove(entity, effectOp, value);
+    }
+
  protected:
     //! Returns the value of the attribute of the entity.
     //! \param entity The entity to get the value of the attribute.

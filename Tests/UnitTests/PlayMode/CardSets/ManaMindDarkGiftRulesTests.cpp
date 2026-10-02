@@ -73,7 +73,8 @@ TEST_CASE("[ManaMind Dark Gift] - current Elusive metadata maps to targeting rul
 {
     const auto* flitterwing = Cards::FindCardByID("CATA_133");
     REQUIRE(flitterwing != nullptr);
-    CHECK(flitterwing->HasGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS));
+    CHECK(flitterwing->HasGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS));
+    CHECK(flitterwing->HasGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS));
     const auto gifts = GetEligibleDarkGifts(MakeDarkGiftCandidate(*flitterwing));
     CHECK(std::ranges::find(gifts, DarkGift::STATS_ELUSIVE) == gifts.end());
 }
@@ -185,6 +186,8 @@ TEST_CASE("[ManaMind Dark Gift] - resolver applies all ten immediate gifts")
     CHECK_EQ(elusive->GetAttack(), 6);
     CHECK_EQ(elusive->GetBaseHealth(), 7);
     CHECK_EQ(elusive->GetGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS), 1);
+    CHECK_EQ(elusive->GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS), 1);
+    CHECK_EQ(elusive->GetGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS), 1);
 
     auto* discount = createMinion();
     ApplyDarkGift(*discount, DarkGift::DISCOUNT_ATTACK);

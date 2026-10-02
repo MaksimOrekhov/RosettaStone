@@ -105,7 +105,9 @@ TEST_CASE("[Cards] - FindCardByClass")
     CHECK_EQ(CardClass::NEUTRAL, cards6.front()->GetCardClass());
     CHECK_EQ(CardClass::PALADIN, cards7.front()->GetCardClass());
     CHECK_EQ(CardClass::PRIEST, cards8.front()->GetCardClass());
-    CHECK_EQ(CardClass::INVALID, cards9.front()->GetCardClass());
+    // The current card snapshot normalizes missing cardClass to NEUTRAL, so
+    // there are no loaded cards with an invalid class.
+    CHECK(cards9.empty());
 }
 
 TEST_CASE("[Cards] - FindCardBySet")

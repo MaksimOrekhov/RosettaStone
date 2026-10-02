@@ -1,8 +1,11 @@
 // Independent expectations frozen in minion_set_enchant_v1_expected_semantics.md.
 #include <Utils/CardSetHeaders.hpp>
+#include <Rosetta/PlayMode/Enchants/Attrs/Atk.hpp>
+#include <Rosetta/PlayMode/Enchants/Attrs/Health.hpp>
 #include <Rosetta/PlayMode/Actions/Summon.hpp>
 #include <Rosetta/PlayMode/Actions/Copy.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/AddEnchantmentTask.hpp>
+#include <Rosetta/PlayMode/Tasks/SimpleTasks/RemoveEnchantmentTask.hpp>
 #include <Rosetta/PlayMode/Tasks/SimpleTasks/ReturnHandTask.hpp>
 #include <algorithm>
 
@@ -110,6 +113,36 @@ TEST_CASE("[ManaMind minion set enchant] fixed stats do not bake in attack or he
     CHECK_EQ(m->GetAttack(), 6); CHECK_EQ(m->GetBaseHealth(), 7); CHECK_EQ(m->GetHealth(), 5);
     champion->Silence(); f.game.ProcessDestroyAndUpdateAura();
     CHECK_EQ(m->GetAttack(), 5); CHECK_EQ(m->GetBaseHealth(), 6);
+}
+
+TEST_CASE("[ManaMind stat aura regression] remove fixed enchant before removing aura") {
+    Fixture f;
+    auto* m = f.Summon(f.own);
+    auto* champion = f.Summon(f.own, "CS2_222"); // Other friendly minions +1/+1.
+    f.game.ProcessDestroyAndUpdateAura();
+    CHECK_EQ(m->GetAttack(), 5);
+    CHECK_EQ(m->GetBaseHealth(), 6);
+    CHECK_EQ(m->GetHealth(), 6);
+
+    const auto attackEnchant = Atk::Effect(EffectOperator::ADD, 1);
+    const auto healthEnchant = Health::Effect(EffectOperator::ADD, 1);
+    attackEnchant->ApplyTo(m, true);
+    healthEnchant->ApplyTo(m, true);
+    CHECK_EQ(m->GetAttack(), 6);
+    CHECK_EQ(m->GetBaseHealth(), 7);
+    CHECK_EQ(m->GetHealth(), 7);
+
+    attackEnchant->RemoveFrom(m);
+    healthEnchant->RemoveFrom(m);
+    CHECK_EQ(m->GetAttack(), 5);
+    CHECK_EQ(m->GetBaseHealth(), 6);
+    CHECK_EQ(m->GetHealth(), 6);
+
+    champion->Silence();
+    f.game.ProcessDestroyAndUpdateAura();
+    CHECK_EQ(m->GetAttack(), 4);
+    CHECK_EQ(m->GetBaseHealth(), 5);
+    CHECK_EQ(m->GetHealth(), 5);
 }
 
 TEST_CASE("[ManaMind minion set enchant] Shell repeat copy and bounce reset") {

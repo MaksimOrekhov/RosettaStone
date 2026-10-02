@@ -113,6 +113,7 @@ void Entity::Reset()
     m_gameTags.erase(STEALTH);
     m_gameTags.erase(CANT_BE_TARGETED_BY_SPELLS);
     m_gameTags.erase(CANT_BE_TARGETED_BY_HERO_POWERS);
+    m_gameTags.erase(CANT_BE_TARGETED_BY_OPPONENTS);
     m_gameTags.erase(SPELLBURST);
     m_gameTags.erase(NUM_ATTACKS_THIS_TURN);
     m_gameTags.erase(INFUSE);

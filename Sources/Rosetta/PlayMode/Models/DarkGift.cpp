@@ -24,7 +24,10 @@ DarkGiftCandidate MakeDarkGiftCandidate(const Card& card)
                            ? card.gameTags.at(GameTag::ATK)
                            : 0;
     candidate.lifesteal = hasTag(GameTag::LIFESTEAL);
-    candidate.elusive = hasTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS);
+    candidate.elusive =
+        hasTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS) ||
+        hasTag(GameTag::CANT_BE_TARGETED_BY_SPELLS) ||
+        hasTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS);
     candidate.charge = hasTag(GameTag::CHARGE);
     candidate.battlecry = hasTag(GameTag::BATTLECRY);
     candidate.taunt = hasTag(GameTag::TAUNT);
@@ -42,7 +45,9 @@ DarkGiftCandidate MakeDarkGiftCandidate(const Entity& entity)
     candidate.attack = entity.GetGameTag(GameTag::ATK);
     candidate.lifesteal = entity.GetGameTag(GameTag::LIFESTEAL) != 0;
     candidate.elusive =
-        entity.GetGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS) != 0;
+        entity.GetGameTag(GameTag::CANT_BE_TARGETED_BY_OPPONENTS) != 0 ||
+        entity.GetGameTag(GameTag::CANT_BE_TARGETED_BY_SPELLS) != 0 ||
+        entity.GetGameTag(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS) != 0;
     candidate.charge = entity.GetGameTag(GameTag::CHARGE) != 0;
     candidate.battlecry = entity.GetGameTag(GameTag::BATTLECRY) != 0;
     candidate.taunt = entity.GetGameTag(GameTag::TAUNT) != 0;
@@ -178,6 +183,8 @@ void ApplyDarkGift(Playable& playable, DarkGift gift)
             addAttack(2);
             addHealth(2);
             setKeyword(GameTag::CANT_BE_TARGETED_BY_OPPONENTS);
+            setKeyword(GameTag::CANT_BE_TARGETED_BY_SPELLS);
+            setKeyword(GameTag::CANT_BE_TARGETED_BY_HERO_POWERS);
             break;
         case DarkGift::DISCOUNT_ATTACK:
             minion->SetGameTag(GameTag::COST,

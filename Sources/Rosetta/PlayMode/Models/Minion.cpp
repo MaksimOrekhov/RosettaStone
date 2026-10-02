@@ -162,6 +162,7 @@ void Minion::Silence()
     SetGameTag(LIFESTEAL, 0);
     SetGameTag(CANT_BE_TARGETED_BY_HERO_POWERS, 0);
     SetGameTag(CANT_BE_TARGETED_BY_SPELLS, 0);
+    SetGameTag(CANT_BE_TARGETED_BY_OPPONENTS, 0);
     SetGameTag(IMMUNE, 0);
     SetGameTag(CANT_ATTACK, 0);
     SetGameTag(RUSH, 0);

@@ -81,10 +81,10 @@ constexpr std::array<CardSet, 1> CLASSIC_CARD_SETS = {
 };
 
 //! The number of Play mode cards.
-constexpr int NUM_PLAY_MODE_CARDS = 15818;
+constexpr int NUM_PLAY_MODE_CARDS = 16944;
 
 //! The number of Battlegrounds cards.
-constexpr int NUM_BATTLEGROUNDS_CARDS = 17611;
+constexpr int NUM_BATTLEGROUNDS_CARDS = 17661;
 
 //! The number of player classes supported in Standard card pools.
 //! \note Death Knight, Druid, Hunter, Mage, Paladin, Priest, Rogue, Shaman,
