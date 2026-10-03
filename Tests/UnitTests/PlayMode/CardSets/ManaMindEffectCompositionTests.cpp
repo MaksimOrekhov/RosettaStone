@@ -986,6 +986,161 @@ TEST_CASE("[ManaMind effect composition] - TIME_218 damages a minion and gives t
     CHECK_EQ(current->GetHero()->GetAttack(), 1);
 }
 
+TEST_CASE("[ManaMind profile deck minion] - JAIL_516 summons two current-cost eligible minions with Rush")
+{
+    GameConfig config;
+    config.player1Class = CardClass::PALADIN;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = false;
+    config.autoRun = false;
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+    Player* current = game.GetCurrentPlayer();
+    current->SetTotalMana(10);
+    current->SetUsedMana(0);
+
+    for (const auto& cardID : { "CORE_ICC_038", "TLC_438", "CORE_CS2_182" })
+    {
+        const auto card = Cards::FindCardByID(cardID);
+        REQUIRE(card != nullptr);
+        current->GetDeckZone()->Add(Entity::GetFromCard(current, card));
+    }
+    const auto recruiterCard = Cards::FindCardByID("JAIL_516");
+    REQUIRE(recruiterCard != nullptr);
+    const auto recruiter = Generic::DrawCard(current, recruiterCard);
+    REQUIRE(recruiter != nullptr);
+
+    game.Process(current, PlayCardTask::Minion(recruiter));
+
+    CHECK_EQ(current->GetDeckZone()->GetCount(), 1);
+    REQUIRE_EQ(current->GetFieldZone()->GetCount(), 3);
+    int summonedCount = 0;
+    for (const auto minion : current->GetFieldZone()->GetMinions())
+    {
+        if (minion->card->id == "JAIL_516")
+        {
+            continue;
+        }
+        CHECK(minion->HasRush());
+        const bool isProfileEligibleMinion =
+            minion->card->id == "CORE_ICC_038" || minion->card->id == "TLC_438";
+        CHECK(isProfileEligibleMinion);
+        ++summonedCount;
+    }
+    CHECK_EQ(summonedCount, 2);
+}
+
+TEST_CASE("[ManaMind profile deck minion] - JAIL_327 summons one cost-qualified minion at each of three end steps")
+{
+    GameConfig config;
+    config.player1Class = CardClass::PALADIN;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = false;
+    config.autoRun = false;
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+    Player* current = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    current->SetTotalMana(10);
+    current->SetUsedMana(0);
+
+    for (const auto& cardID : { "CORE_ICC_038", "TLC_438", "CORE_ICC_038",
+                                 "TLC_438", "CORE_ICC_038", "TLC_438",
+                                 "CORE_ICC_038", "TLC_438", "CORE_CS2_182",
+                                 "CORE_CS2_182", "CORE_CS2_182" })
+    {
+        const auto card = Cards::FindCardByID(cardID);
+        REQUIRE(card != nullptr);
+        current->GetDeckZone()->Add(Entity::GetFromCard(current, card));
+    }
+    const auto auraCard = Cards::FindCardByID("JAIL_327");
+    REQUIRE(auraCard != nullptr);
+    const auto aura = Generic::DrawCard(current, auraCard);
+    REQUIRE(aura != nullptr);
+    game.Process(current, PlayCardTask::Spell(aura));
+
+    for (int trigger = 1; trigger <= 4; ++trigger)
+    {
+        game.Process(current, EndTurnTask());
+        game.ProcessUntil(Step::MAIN_ACTION);
+        CHECK_EQ(current->GetFieldZone()->GetCount(), trigger <= 3 ? trigger : 3);
+        for (const auto minion : current->GetFieldZone()->GetMinions())
+        {
+            const bool isProfileEligibleMinion =
+                minion->card->id == "CORE_ICC_038" || minion->card->id == "TLC_438";
+            CHECK(isProfileEligibleMinion);
+        }
+        if (trigger < 4)
+        {
+            game.Process(opponent, EndTurnTask());
+            game.ProcessUntil(Step::MAIN_ACTION);
+        }
+    }
+    CHECK_EQ(current->GetDeckZone()->GetCount(), 5);
+}
+
+TEST_CASE("[ManaMind profile deck minion] - JAIL_516 uses live cost, summons fewer than requested, and handles empty selection")
+{
+    GameConfig config;
+    config.player1Class = CardClass::PALADIN;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = false;
+    config.autoRun = false;
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+    Player* current = game.GetCurrentPlayer();
+    current->SetTotalMana(10);
+    current->SetUsedMana(0);
+
+    const auto protectorCard = Cards::FindCardByID("CORE_ICC_038");
+    const auto yetiCard = Cards::FindCardByID("CORE_CS2_182");
+    REQUIRE(protectorCard != nullptr);
+    REQUIRE(yetiCard != nullptr);
+    auto* protector = Entity::GetFromCard(current, protectorCard);
+    auto* discountedYeti = Entity::GetFromCard(current, yetiCard);
+    auto* normalYeti = Entity::GetFromCard(current, yetiCard);
+    REQUIRE(protector != nullptr);
+    REQUIRE(discountedYeti != nullptr);
+    REQUIRE(normalYeti != nullptr);
+    protector->SetCost(3);
+    discountedYeti->SetCost(2);
+    current->GetDeckZone()->Add(protector);
+    current->GetDeckZone()->Add(discountedYeti);
+    current->GetDeckZone()->Add(normalYeti);
+
+    const auto recruiterCard = Cards::FindCardByID("JAIL_516");
+    REQUIRE(recruiterCard != nullptr);
+    const auto firstRecruiter = Generic::DrawCard(current, recruiterCard);
+    const auto secondRecruiter = Generic::DrawCard(current, recruiterCard);
+    REQUIRE(firstRecruiter != nullptr);
+    REQUIRE(secondRecruiter != nullptr);
+    game.Process(current, PlayCardTask::Minion(firstRecruiter));
+
+    REQUIRE_EQ(current->GetFieldZone()->GetCount(), 2);
+    Minion* rushedYeti = nullptr;
+    for (const auto minion : current->GetFieldZone()->GetMinions())
+    {
+        if (minion->card->id == "CORE_CS2_182")
+        {
+            rushedYeti = minion;
+        }
+    }
+    REQUIRE(rushedYeti != nullptr);
+    CHECK(rushedYeti->HasRush());
+    CHECK_EQ(rushedYeti->GetCost(), 2);
+    CHECK_EQ(current->GetDeckZone()->GetCount(), 2);
+
+    game.Process(current, PlayCardTask::Minion(secondRecruiter));
+    CHECK_EQ(current->GetFieldZone()->GetCount(), 3);
+    CHECK_EQ(current->GetDeckZone()->GetCount(), 2);
+}
+
 TEST_CASE("[ManaMind effect composition] - TIME_215 damages every minion and adds Static Shock")
 {
     GameConfig config;
