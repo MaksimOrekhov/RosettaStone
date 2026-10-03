@@ -381,6 +381,7 @@ TEST_CASE("[ManaMind effect composition] - END_007 resolves damage, attack encha
     auto& hand = *current->GetHandZone();
     const auto advantageCard = Cards::FindCardByID("END_007");
     REQUIRE(advantageCard != nullptr);
+    CHECK_FALSE(advantageCard->playRequirements.contains(PlayReq::REQ_MINION_TARGET));
     const auto advantage = Generic::DrawCard(current, advantageCard);
     const auto handBefore = hand.GetCount();
 
@@ -390,6 +391,12 @@ TEST_CASE("[ManaMind effect composition] - END_007 resolves damage, attack encha
     CHECK_EQ(current->GetHero()->GetAttack(), 1);
     CHECK_EQ(current->GetHero()->GetArmor(), 1);
     CHECK_EQ(hand.GetCount(), handBefore);
+
+    game.Process(current, EndTurnTask());
+    game.ProcessUntil(Step::MAIN_ACTION);
+    game.Process(opponent, EndTurnTask());
+    game.ProcessUntil(Step::MAIN_ACTION);
+    CHECK_EQ(current->GetHero()->GetAttack(), 0);
 }
 
 TEST_CASE("[ManaMind effect composition] - CAP_801 applies Taunt, stats, and Reborn")
@@ -959,9 +966,12 @@ TEST_CASE("[ManaMind effect composition] - TIME_218 damages a minion and gives t
     Player* current = game.GetCurrentPlayer();
     Player* opponent = game.GetOpponentPlayer();
     const auto shock = Generic::DrawCard(current, Cards::FindCardByID("TIME_218"));
+    const auto shockCard = Cards::FindCardByID("TIME_218");
     const auto yeti = Generic::DrawCard(opponent, Cards::FindCardByName("Chillwind Yeti"));
     REQUIRE(shock != nullptr);
+    REQUIRE(shockCard != nullptr);
     REQUIRE(yeti != nullptr);
+    CHECK(shockCard->playRequirements.contains(PlayReq::REQ_MINION_TARGET));
     game.Process(current, EndTurnTask());
     game.ProcessUntil(Step::MAIN_ACTION);
     opponent->SetTotalMana(10);
