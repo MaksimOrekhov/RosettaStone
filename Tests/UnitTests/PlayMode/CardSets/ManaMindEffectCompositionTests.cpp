@@ -717,6 +717,33 @@ TEST_CASE("[ManaMind effect composition] - CATA_475 damages all enemies at its c
     CHECK_EQ(current->GetHero()->GetHealth(), 30);
 }
 
+TEST_CASE("[ManaMind trigger] - CATA_999 damages the enemy hero at its controller's turn end")
+{
+    GameConfig config;
+    config.player1Class = CardClass::WARLOCK;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+    Player* current = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    current->SetTotalMana(10);
+    current->SetUsedMana(0);
+
+    const auto drake = Generic::DrawCard(current, Cards::FindCardByID("CATA_999"));
+    REQUIRE(drake != nullptr);
+    game.Process(current, PlayCardTask::Minion(drake));
+    REQUIRE_EQ(opponent->GetHero()->GetHealth(), 30);
+    game.Process(current, EndTurnTask());
+
+    CHECK_EQ(opponent->GetHero()->GetHealth(), 26);
+    CHECK_EQ(current->GetHero()->GetHealth(), 30);
+}
+
 TEST_CASE("[ManaMind effect composition] - EDR_459 has distinct Battlecry and Deathrattle damage")
 {
     GameConfig config;
@@ -2142,4 +2169,33 @@ TEST_CASE("[ManaMind effect composition] - TLC_633 only targets minions with a m
     current->SetUsedMana(0);
     game.Process(current, PlayCardTask::MinionTarget(bugsquasher, dragon));
     CHECK_EQ(opponent->GetFieldZone()->GetCount(), 0);
+}
+
+TEST_CASE("[ManaMind trigger] - JAIL_872 draws after its hero attacks")
+{
+    GameConfig config;
+    config.player1Class = CardClass::DRUID;
+    config.player2Class = CardClass::WARRIOR;
+    config.startPlayer = PlayerType::PLAYER1;
+    config.doFillDecks = true;
+    config.autoRun = false;
+
+    Game game(config);
+    game.Start();
+    game.ProcessUntil(Step::MAIN_ACTION);
+    Player* current = game.GetCurrentPlayer();
+    Player* opponent = game.GetOpponentPlayer();
+    current->SetTotalMana(10);
+    current->SetUsedMana(0);
+
+    const auto spiderRider = Generic::DrawCard(current, Cards::FindCardByID("JAIL_872"));
+    REQUIRE(spiderRider != nullptr);
+    game.Process(current, PlayCardTask::Minion(spiderRider));
+    REQUIRE_EQ(current->GetFieldZone()->GetCount(), 1);
+
+    const auto handBeforeAttack = current->GetHandZone()->GetCount();
+    game.Process(current, HeroPowerTask());
+    game.Process(current, AttackTask(current->GetHero(), opponent->GetHero()));
+
+    CHECK_EQ(current->GetHandZone()->GetCount(), handBeforeAttack + 1);
 }
